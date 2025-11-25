@@ -62,7 +62,7 @@ echo -e "\033[0;36mScanning & Filtering...\033[0m" >&2
         %presets = (
             "web"     => "html|htm|css|scss|sass|less|js|jsx|ts|tsx|json|svg|vue|svelte",
             "backend" => "py|rb|php|pl|go|rs|java|cs|cpp|h|c|hpp|swift|kt|ex|exs|sh",
-            "dotnet"  => "cs|razor|csproj|json|http|xaml",
+            "dotnet"  => "cs|razor|csproj|json|http|xaml|yml",
             "java"    => "java|kt|kts|scala",
             "cpp"     => "c|h|cpp|cc|cxx|hpp|hxx|rs|go|swift",
             "script"  => "py|rb|php|pl|pm|lua|sh|bash|zsh",
