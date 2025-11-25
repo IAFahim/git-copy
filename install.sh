@@ -36,7 +36,7 @@ GROUP_CPP=("*.c" "*.h" "*.cpp" "*.cc" "*.cxx" "*.hpp" "*.hxx" "*.rs" "*.go" "*.s
 GROUP_JAVA=("*.java" "*.kt" "*.kts" "*.scala")
 GROUP_WEB=("*.html" "*.htm" "*.css" "*.scss" "*.sass" "*.less" "*.js" "*.jsx" "*.ts" "*.tsx")
 GROUP_SCRIPT=("*.py" "*.rb" "*.php" "*.pl" "*.pm" "*.lua" "*.sh" "*.bash" "*.zsh")
-GROUP_DOTNET=("*.cs" "*.razor" "*.csproj" "*.json")
+GROUP_DOTNET=("*.cs" "*.razor" "*.csproj" "*.json" "*.http")
 GROUP_DATA=("*.sql" "*.xml" "*.json" "*.yaml" "*.yml" "*.toml" "*.ini" "*.md")
 GROUP_BUILD=("Dockerfile" "Makefile" "Gemfile" "package.json")
 
