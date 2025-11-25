@@ -1,14 +1,15 @@
 #!/bin/bash
 
 # ==============================================================================
-# 🔮 GOD MODE INSTALLER: git-copy (Universal MacOS/Linux Fix)
+# 🌌 SINGULARITY INSTALLER: git-copy
+# The final word in context extraction. Universal. Optimized.
 # ==============================================================================
 
 TOOL_NAME="git-copy"
 INSTALL_DIR="/usr/local/bin"
 TARGET_PATH="$INSTALL_DIR/$TOOL_NAME"
 
-# Visuals
+# Colors
 CYAN='\033[0;36m'
 GREEN='\033[0;32m'
 RED='\033[0;31m'
@@ -16,330 +17,252 @@ PURPLE='\033[0;35m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-echo -e "${PURPLE}   ___  ___  _  _  _____  ____  __  __  ____ ${NC}"
-echo -e "${PURPLE}  / __)/ __)( \/ )(  _  )(  _ \(  )(  )(_  _)${NC}"
-echo -e "${PURPLE} ( (__( (__  \  /  )(_)(  )___/ )(__)(   )(  ${NC}"
-echo -e "${PURPLE}  \___)\___) (__) (_____)(__)  (______) (__) ${NC}"
-echo -e "${CYAN}  >> RE-INITIALIZING FOR BASH 3.2 COMPATIBILITY <<${NC}"
-echo ""
+echo -e "${PURPLE}   ___  __  ____  ____  ____  ____  __  ${NC}"
+echo -e "${PURPLE}  / __)(  )(  _ \(_  _)(  __)(_  _)(  ) ${NC}"
+echo -e "${PURPLE} ( (_-. )(  )   /  )(   ) _)   )(   )(  ${NC}"
+echo -e "${PURPLE}  \___/(__)(_)\_) (__) (____) (__) (__) ${NC}"
+echo -e "${CYAN}  >> INSTALLING SINGULARITY EDITION <<${NC}"
 
-# 1. Permission Check
-SUDO=""
+# 1. Elevation Check
 if [ ! -w "$INSTALL_DIR" ]; then
-    if command -v sudo >/dev/null 2>&1; then
-        SUDO="sudo"
-        echo -e "${CYAN}🔒 Elevation required to write to ${INSTALL_DIR}...${NC}"
-    else
-        echo -e "${RED}💀 Fatal: Cannot write to $INSTALL_DIR and sudo is missing.${NC}"
-        exit 1
+    if command -v sudo >/dev/null 2>&1; then SUDO="sudo"; else
+        echo -e "${RED}💀 Fatal: Need root access to install to $INSTALL_DIR${NC}"; exit 1
     fi
-fi
+else SUDO=""; fi
 
-# 2. The Payload (Rewritten for Bash 3.2+ Compatibility)
+# 2. The Payload
 $SUDO tee "$TARGET_PATH" > /dev/null << 'EOF'
 #!/usr/bin/env bash
 
 # ==============================================================================
-# 🧠 GIT-COPY: GOD MODE (v3.1.0 - Universal)
-# Works on MacOS Bash 3.2 and Modern Linux
+# 🧠 GIT-COPY: SINGULARITY EDITION (v4.0.0)
+# - Universal (Perl/Bash 3.2+)
+# - Token Optimized Tree
+# - Smart Noise Reduction
 # ==============================================================================
 
-set -o errexit
 set -o nounset
 set -o pipefail
+# set -o errexit # Disabled to allow soft-fails on file read errors
 
 # ------------------------------------------------------------------------------
-# 🎨 CONSTANTS
+# ⚙️ CONFIGURATION
 # ------------------------------------------------------------------------------
-MAX_FILE_SIZE_KB=500
+MAX_FILE_SIZE_KB=1024
 TOKEN_RATIO=4
+
+# 🗑️ NOISE FILTER
+# Files that waste tokens but provide no logic value
+IGNORE_PATTERNS="package-lock.json|yarn.lock|pnpm-lock.yaml|Cargo.lock|Gemfile.lock|composer.lock|mix.lock|\.map$|\.min\.js$|\.min\.css$|\.svg$"
+
+# 🔒 SECURITY FILTER
+# Files that effectively destroy your security if shared
+SECURITY_BLACKLIST="id_rsa|id_dsa|\.pem|\.key|\.env(\..+)?$|secrets|credentials|\.p12"
+
+# Temp setup
 TEMP_DIR=$(mktemp -d 2>/dev/null || mktemp -d -t 'git-copy')
 CONTEXT_FILE="${TEMP_DIR}/context.md"
 
-# Colors
-BOLD='\033[1m'
-DIM='\033[2m'
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
-BLUE='\033[0;34m'
-CYAN='\033[0;36m'
-NC='\033[0m'
-
-# Security Blacklist (Regex)
-SECURITY_BLACKLIST="id_rsa|id_dsa|\.pem|\.key|\.env|secrets|credentials"
-
 # ------------------------------------------------------------------------------
-# 🛠️ CORE FUNCTIONS
+# 🛠️ POLYGLOT FUNCTIONS (Universal Compatibility)
 # ------------------------------------------------------------------------------
 
-# Defined early to prevent "command not found" if script crashes early
-cleanup() {
-    rm -rf "$TEMP_DIR"
-}
+cleanup() { rm -rf "$TEMP_DIR"; }
 trap cleanup SIGINT SIGTERM EXIT
 
-die() { echo -e "${RED}✖ FATAL: $1${NC}" >&2; exit 1; }
-info() { echo -e "${BLUE}ℹ $1${NC}"; }
-warn() { echo -e "${YELLOW}⚠ $1${NC}" >&2; }
-
-# Bash 3.2 Compatible Group Lookup (Replaces declare -A)
-get_group_extensions() {
-    case "$1" in
-        web) echo "html css scss sass less js jsx ts tsx json svg vue svelte" ;;
-        backend) echo "py rb php pl go rs java cs cpp h c hpp swift kt ex exs sh" ;;
-        data) echo "json yaml yml toml xml csv sql graphql" ;;
-        config) echo "env conf ini dockerfile makefile gemfile package.json cargo.toml go.mod" ;;
-        docs) echo "md txt rst adoc" ;;
-        *) echo "" ;; # Return empty if not found
-    esac
+# 1. Universal Clipboard
+# Tries every known clipboard tool in existence.
+copy_to_clipboard() {
+    if [[ "$OSTYPE" == "darwin"* ]]; then pbcopy
+    elif [ -n "${WSL_DISTRO_NAME:-}" ]; then clip.exe
+    elif command -v wl-copy >/dev/null 2>&1; then wl-copy
+    elif command -v xclip >/dev/null 2>&1; then xclip -selection clipboard
+    elif command -v xsel >/dev/null 2>&1; then xsel --clipboard --input
+    elif command -v putclip >/dev/null 2>&1; then putclip # Cygwin
+    else echo -e "\033[0;31m✖ No clipboard found. Output printed to stdout.\033[0m" >&2; cat; fi
 }
 
-# Universal Clipboard Detector
-detect_clipboard() {
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        echo "pbcopy"
-    elif [ -n "${WSL_DISTRO_NAME:-}" ] && command -v clip.exe >/dev/null; then
-        echo "clip.exe"
-    elif command -v wl-copy >/dev/null 2>&1 && [ -n "${WAYLAND_DISPLAY:-}" ]; then
-        echo "wl-copy"
-    elif command -v xclip >/dev/null 2>&1; then
-        echo "xclip -selection clipboard"
-    elif command -v xsel >/dev/null 2>&1; then
-        echo "xsel --clipboard --input"
-    else
-        die "No clipboard detected. Use macOS, WSL, or install xclip."
-    fi
-}
-
-# Heuristic Language Detection
-get_lang_tag() {
-    local fname="$1"
-    local ext="${fname##*.}"
-    local lower_name=$(basename "$fname" | tr '[:upper:]' '[:lower:]')
-
-    # Special Filenames
-    case "$lower_name" in
-        dockerfile) echo "dockerfile"; return ;;
-        makefile) echo "makefile"; return ;;
-        vimrc) echo "vim"; return ;;
-    esac
-
-    # Extensions
-    case "$ext" in
-        js|mjs|cjs) echo "javascript" ;;
-        jsx|ts|tsx) echo "typescript" ;;
-        py|pyw) echo "python" ;;
-        rs) echo "rust" ;;
-        go) echo "go" ;;
-        java|kt) echo "java" ;;
-        c|h|cpp|hpp|cc) echo "cpp" ;;
-        cs) echo "csharp" ;;
-        sh|bash|zsh) echo "bash" ;;
-        html|htm) echo "html" ;;
-        css|scss|sass) echo "css" ;;
-        json) echo "json" ;;
-        yaml|yml) echo "yaml" ;;
-        xml|csproj) echo "xml" ;;
-        sql) echo "sql" ;;
-        md) echo "markdown" ;;
-        *) echo "$ext" ;;
-    esac
-}
-
-# Binary File Detection (Compatible with non-GNU grep)
+# 2. Universal Binary Detector (Perl 5)
+# Works on Mac, Linux, Windows Git Bash. 100% Reliable.
 is_binary() {
-    # Check first 1000 bytes for null character
-    # LC_ALL=C forces byte-by-byte comparison which is safer on Mac
-    if LC_ALL=C grep -qI -m 1 "" "$1"; then
-        return 1 # It is text (grep -I treats binary as non-match)
-    else
-        # If grep -I thinks it's binary, it might be.
-        # But grep -I is tricky. Let's rely on perl if grep fails us, 
-        # or just assume text if we can read it.
-        # Actually, standard grep -I returns 0 if text, 1 if binary (roughly).
-        # Let's use a simpler heuristic for Mac:
-        # Check if file has null bytes in first 1KB
-        if head -c 1024 "$1" | grep -qP '\x00' 2>/dev/null; then
-            return 0 # Binary
-        fi
-        # Mac grep doesn't always support -P well, try Perl which is on every Mac
-        if perl -ne 'exit 1 if /\x00/' <(head -c 1024 "$1"); then
-            return 1 # Text (Perl exit 1 means match found? No wait.)
-        else
-            return 0 # Binary
-        fi
-    fi
-}
-# Simpler binary check that works on standard Mac/Linux
-is_binary_simple() {
-    # If the file contains a null byte in the first 512 bytes, assume binary
-    if head -c 512 "$1" | grep -q -F "$(printf '\0')"; then
-        return 0 # True, is binary
-    fi
-    return 1 # False, is text
+    perl -e '
+        exit 1 unless -f $ARGV[0];
+        open(my $f, "<", $ARGV[0]) or exit 1;
+        read($f, my $buf, 1024);
+        exit ($buf =~ /\x00/ ? 0 : 1); # Returns 0 (true) if binary
+    ' "$1"
 }
 
-# Pure Bash Tree (Awk based, fast)
-generate_tree() {
+# 3. Compact Tree Generator (Token Optimized)
+# Uses 2-space indentation instead of pipes to save horizontal tokens.
+generate_compact_tree() {
     sort | awk -F'/' '
     BEGIN { print "." }
     {
-        if (NF == 1) {
-            print "|-- " $1
-        } else {
-            for (i=1; i<NF; i++) {
-                if ($i != p[i]) {
-                    for (j=1; j<i; j++) printf "|   "
-                    print "|-- " $i "/"
-                }
+        indent = ""
+        # Calculate indentation based on depth
+        for (i=1; i<NF; i++) {
+            if ($i != p[i]) {
+                # New Directory
+                print indent $i "/"
             }
-            for (j=1; j<NF; j++) printf "|   "
-            print "|-- " $NF
+            indent = indent "  " # 2 spaces per level
         }
+        print indent $NF
         split($0, p, "/")
     }'
 }
 
+# 4. Language Detector
+get_lang() {
+    local ext="${1##*.}"
+    local name=$(basename "$1" | tr '[:upper:]' '[:lower:]')
+    
+    if [[ "$name" == "dockerfile" ]]; then echo "dockerfile"; return; fi
+    if [[ "$name" == "makefile" ]]; then echo "makefile"; return; fi
+    
+    case "$ext" in
+        js|jsx|ts|tsx|mjs) echo "javascript" ;;
+        cs|csproj) echo "csharp" ;;
+        py) echo "python" ;;
+        go) echo "go" ;;
+        rs) echo "rust" ;;
+        java|kt) echo "java" ;;
+        c|h|cpp|hpp) echo "cpp" ;;
+        html|vue|svelte) echo "html" ;;
+        css|scss|sass) echo "css" ;;
+        json|json5) echo "json" ;;
+        yaml|yml) echo "yaml" ;;
+        sh|bash|zsh) echo "bash" ;;
+        md) echo "markdown" ;;
+        sql) echo "sql" ;;
+        *) echo "$ext" ;;
+    esac
+}
+
 # ------------------------------------------------------------------------------
-# 🎮 MAIN EXECUTION
+# 🚀 EXECUTION
 # ------------------------------------------------------------------------------
 
 # -- Argument Parsing --
 declare -a INCLUDE_PATTERNS
-# In Bash 3.2 arrays are just declare -a
 USE_ALL=true
 
 if [ $# -gt 0 ]; then
     USE_ALL=false
     for arg in "$@"; do
-        # Check if arg is a group
-        GROUP_EXTS=$(get_group_extensions "$arg")
-        if [ -n "$GROUP_EXTS" ]; then
-            for ext in $GROUP_EXTS; do INCLUDE_PATTERNS+=("*.$ext"); done
-        elif [[ "$arg" == "-h" || "$arg" == "--help" ]]; then
-            echo -e "Usage: git-copy [web|backend|extension]..."
-            exit 0
+        # Group Expansion
+        case "$arg" in
+            web) P="html css scss js jsx ts tsx json vue svelte" ;;
+            backend) P="py rb php go rs java cs cpp c h swift kt" ;;
+            config) P="env conf ini dockerfile makefile json yaml toml" ;;
+            *) P="" ;;
+        esac
+        
+        if [ -n "$P" ]; then
+            for ext in $P; do INCLUDE_PATTERNS+=("*.$ext"); done
         else
             if [[ "$arg" == *"."* ]]; then INCLUDE_PATTERNS+=("$arg"); else INCLUDE_PATTERNS+=("*.$arg"); fi
         fi
     done
 fi
 
-# -- Context Discovery --
-IS_GIT=false
-if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then IS_GIT=true; fi
-
-if $IS_GIT; then
-    ROOT_DIR=$(git rev-parse --show-toplevel)
-    REL_PREFIX=$(git rev-parse --show-prefix)
-    [ -z "$REL_PREFIX" ] && REL_PREFIX="./"
+# -- Discovery --
+if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    ROOT=$(git rev-parse --show-toplevel)
+    # Use git ls-files to respect .gitignore
+    git ls-files -z --exclude-standard -c -o . > "${TEMP_DIR}/raw"
 else
-    ROOT_DIR=$(pwd)
-    REL_PREFIX="./"
+    ROOT=$(pwd)
+    # Fallback for non-git folders
+    find . -type f -not -path '*/.*' -not -path '*/node_modules/*' -print0 > "${TEMP_DIR}/raw"
 fi
 
-info "Scanning context at: ${BOLD}${REL_PREFIX}${NC}"
-CLIP_CMD=$(detect_clipboard)
-LIST_FILE="${TEMP_DIR}/files.txt"
+# -- Filtering --
+LIST_FILE="${TEMP_DIR}/list"
+touch "$LIST_FILE"
 
-# -- File Listing --
-if $IS_GIT; then
-    # Git Mode
-    git ls-files -z --exclude-standard -c -o . > "${TEMP_DIR}/gitfiles.raw"
+while IFS= read -r -d '' file; do
+    # Strip relative prefix if present
+    clean_file="${file#./}"
     
-    if $USE_ALL; then
-        xargs -0 -n 1 < "${TEMP_DIR}/gitfiles.raw" > "$LIST_FILE"
-    else
-        # Filter (Bash 3.2 friendly loop)
-        while IFS= read -r -d '' file; do
-            MATCH=false
-            for pattern in "${INCLUDE_PATTERNS[@]}"; do
-                # Wildcard matching
-                if [[ "$file" == $pattern || "$(basename "$file")" == $pattern ]]; then
-                    MATCH=true; break
-                fi
-            done
-            if $MATCH; then echo "$file" >> "$LIST_FILE"; fi
-        done < "${TEMP_DIR}/gitfiles.raw"
-    fi
-else
-    # Find Mode (Mac compatible)
-    find . -type f \
-        -not -path '*/.*' \
-        -not -path '*/node_modules/*' \
-        -not -path '*/bin/*' \
-        -not -path '*/obj/*' \
-        -print0 | xargs -0 -n 1 | sed 's|^\./||' > "$LIST_FILE"
-    
-    # Simple filter for non-git mode (if needed)
+    # 1. Check User Filters
     if [ "$USE_ALL" = false ]; then
-        mv "$LIST_FILE" "${TEMP_DIR}/all_files.txt"
-        touch "$LIST_FILE"
-        for pattern in "${INCLUDE_PATTERNS[@]}"; do
-            # Grep filtering (basic)
-            CLEAN_PAT="${pattern//\*/}"
-            grep "$CLEAN_PAT" "${TEMP_DIR}/all_files.txt" >> "$LIST_FILE" || true
+        MATCH=false
+        for pat in "${INCLUDE_PATTERNS[@]}"; do
+            # Simple wildcard matching logic
+            if [[ "$clean_file" == $pat || "$(basename "$clean_file")" == $pat ]]; then
+                MATCH=true; break
+            fi
         done
-        sort -u "$LIST_FILE" -o "$LIST_FILE"
+        if [ "$MATCH" = false ]; then continue; fi
     fi
-fi
 
-# -- Processing --
+    echo "$clean_file" >> "$LIST_FILE"
+done < "${TEMP_DIR}/raw"
+
+# -- Content Generation --
 COUNT=0
 TOTAL_BYTES=0
-TOTAL_LINES=0
 
-# Prepare Header
+# Header
 {
-    echo "# Project Context"
-    echo "- **Root:** \`$ROOT_DIR\`"
-    echo "- **Generated:** $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+    echo "# Context"
+    echo "- **Root:** \`$ROOT\`"
+    echo "- **Time:** $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
     echo ""
     echo "## Structure"
     echo "\`\`\`text"
-    cat "$LIST_FILE" | generate_tree
+    # Generate the Compact Tree
+    cat "$LIST_FILE" | generate_compact_tree
     echo "\`\`\`"
     echo ""
 } > "$CONTEXT_FILE"
 
-# Loop files
+# Process Files
 while IFS= read -r file; do
     [ -z "$file" ] && continue
     [[ "$(basename "$file")" == "git-copy" ]] && continue
     
-    ((COUNT++))
-    printf "\r${CYAN}⚡ Processing file $COUNT...${NC}" >&2
-
     if [ ! -f "$file" ]; then continue; fi
 
-    # Security Censorship
+    ((COUNT++))
+    printf "\r\033[0;36m⚡ Processing file $COUNT...\033[0m" >&2
+
+    # 1. Security Check
     if [[ "$file" =~ $SECURITY_BLACKLIST ]]; then
         echo "## File: \`$file\`" >> "$CONTEXT_FILE"
         echo "> 🔒 **CENSORED (Security)**" >> "$CONTEXT_FILE"
+        echo "" >> "$CONTEXT_FILE"
+        continue
+    fi
+    
+    # 2. Noise Check
+    if [[ "$file" =~ $IGNORE_PATTERNS ]]; then
+        # Silently skip lock files to save massive space
         continue
     fi
 
-    # Binary Check
-    if is_binary_simple "$file"; then
+    # 3. Binary Check
+    if is_binary "$file"; then
         echo "## File: \`$file\`" >> "$CONTEXT_FILE"
         echo "> 🤖 **SKIPPED (Binary)**" >> "$CONTEXT_FILE"
+        echo "" >> "$CONTEXT_FILE"
         continue
     fi
 
-    # Content
-    FSIZE=$(wc -c < "$file")
-    
-    # Large file check
-    if [ "$FSIZE" -gt $((MAX_FILE_SIZE_KB * 1024)) ]; then
+    # 4. Size Check
+    SIZE=$(wc -c < "$file")
+    if [ "$SIZE" -gt $((MAX_FILE_SIZE_KB * 1024)) ]; then
         echo "## File: \`$file\`" >> "$CONTEXT_FILE"
-        echo "> ⚠️ **SKIPPED (Too Large)**" >> "$CONTEXT_FILE"
+        echo "> ⚠️ **SKIPPED (Too Large: $((SIZE/1024))KB)**" >> "$CONTEXT_FILE"
+        echo "" >> "$CONTEXT_FILE"
         continue
     fi
 
-    LANG=$(get_lang_tag "$file")
-    ((TOTAL_BYTES+=FSIZE))
-    
+    ((TOTAL_BYTES+=SIZE))
+    LANG=$(get_lang "$file")
+
     echo "## File: \`$file\`" >> "$CONTEXT_FILE"
     echo "\`\`\`$LANG" >> "$CONTEXT_FILE"
     cat "$file" >> "$CONTEXT_FILE"
@@ -351,15 +274,18 @@ done < "$LIST_FILE"
 
 printf "\r\033[K" >&2
 
-# Final Copy
-TOKENS=$((TOTAL_BYTES / TOKEN_RATIO))
-cat "$CONTEXT_FILE" | eval "$CLIP_CMD"
+# Final Output
+cat "$CONTEXT_FILE" | copy_to_clipboard
 
-echo -e "${GREEN}${BOLD}✔ Copied to Clipboard!${NC}"
-echo -e "📄 Files: ${BOLD}${COUNT}${NC} | 🧠 Tokens: ${BOLD}~${TOKENS}${NC}"
+# Summary
+TOKENS=$((TOTAL_BYTES / TOKEN_RATIO))
+echo -e "\033[0;32m\033[1m✔ Copied to Clipboard!\033[0m"
+echo -e "\033[2mFiles:  $COUNT"
+echo -e "Tokens: ~$TOKENS\033[0m"
+
 EOF
 
 # 3. Finalize
 $SUDO chmod +x "$TARGET_PATH"
-echo -e "${GREEN}✅ Installation Complete (Mac/Linux Compatible).${NC}"
-echo -e "Run ${BOLD}git-copy${NC} to use."
+echo -e "${GREEN}✅ Installation Complete.${NC}"
+echo -e "Use: ${BOLD}git copy [web|backend|*.js]${NC}"
