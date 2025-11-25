@@ -13,7 +13,7 @@ PURPLE='\033[0;35m'
 GREEN='\033[0;32m'
 NC='\033[0m'
 
-echo -e "${PURPLE}>> INSTALLING GIT-COPY <<${NC}"
+echo -e "${PURPLE}>> INSTALLING GIT-COPY v16 (PURE STREAM) <<${NC}"
 
 # Permissions Check
 CMD_PREFIX=""
@@ -25,13 +25,16 @@ TMP_PAYLOAD=$(mktemp)
 cat > "$TMP_PAYLOAD" << 'EOF'
 #!/usr/bin/env bash
 
+# ------------------------------------------------------------------------------
+# ⚡ GIT-COPY | v16.0 | The Purist
+# ------------------------------------------------------------------------------
 set -o nounset
 set -o pipefail
 
 # --- CONFIG ---
 MAX_SIZE=1048576
 
-# Pass arguments to Perl via ENV to avoid shell escaping nightmare
+# Pass arguments to Perl via ENV
 export GIT_COPY_ARGS="$*"
 
 # --- EXECUTION ---
@@ -48,21 +51,18 @@ else
     cmd=(find . -type f -not -path '*/.*' -print0)
 fi
 
-echo -e "\033[0;36mScanning & Filtering...\033[0m" >&2
+echo -e "\033[0;36mProcessing...\033[0m" >&2
 
 # 2. PERL ENGINE
 "${cmd[@]}" | perl -0 -ne '
     BEGIN {
         $max_size = '$MAX_SIZE';
-        $root = "'"$ROOT"'";
-        $root =~ s{.*/}{}; 
         
-        # --- PRESET DEFINITIONS ---
-        # Maps preset names to Regex strings of extensions or filenames
+        # --- PRESETS ---
         %presets = (
             "web"     => "html|htm|css|scss|sass|less|js|jsx|ts|tsx|json|svg|vue|svelte",
             "backend" => "py|rb|php|pl|go|rs|java|cs|cpp|h|c|hpp|swift|kt|ex|exs|sh",
-            "dotnet"  => "cs|razor|csproj|json|http|xaml|yml",
+            "dotnet"  => "cs|razor|csproj|json|http|xaml",
             "java"    => "java|kt|kts|scala",
             "cpp"     => "c|h|cpp|cc|cxx|hpp|hxx|rs|go|swift",
             "script"  => "py|rb|php|pl|pm|lua|sh|bash|zsh",
@@ -72,7 +72,7 @@ echo -e "\033[0;36mScanning & Filtering...\033[0m" >&2
             "docs"    => "md|txt|rst|adoc"
         );
 
-        # --- ARGUMENT PARSING ---
+        # --- ARGS ---
         $args = $ENV{GIT_COPY_ARGS};
         $filter_active = 0;
         $filter_re = "";
@@ -81,24 +81,15 @@ echo -e "\033[0;36mScanning & Filtering...\033[0m" >&2
             $filter_active = 1;
             @requests = split(/\s+/, lc($args));
             @patterns = ();
-
             foreach $req (@requests) {
-                if (exists $presets{$req}) {
-                    # Add preset extensions
-                    push @patterns, $presets{$req};
-                } else {
-                    # Add raw extension if user typed "js" or "py" manually
-                    $req =~ s/^\.//; # remove leading dot
-                    push @patterns, $req;
-                }
+                if (exists $presets{$req}) { push @patterns, $presets{$req}; }
+                else { $req =~ s/^\.//; push @patterns, $req; }
             }
-            # Create a single compiled Regex for the filter
             $joined = join("|", @patterns);
-            # Match end of string (extension) OR exact filename
             $filter_re = qr/(\.($joined)$)|(^($joined)$)/i;
         }
 
-        # Standard Ignore Patterns
+        # Regex
         $ignore_re = qr/package-lock\.json|yarn\.lock|Cargo\.lock|\.DS_Store|Thumbs\.db|\.git\/|\.png$|\.jpg$|\.jpeg$|\.gif$|\.ico$|\.woff2?$|\.pdf$|\.exe$|\.bin$|\.pyc$|\.dll$|\.pdb$|\.min\.js$|\.min\.css$/i;
         $sec_re = qr/id_rsa|id_dsa|\.pem|\.key|\.p12|\.env|secrets|credentials/i;
 
@@ -110,28 +101,27 @@ echo -e "\033[0;36mScanning & Filtering...\033[0m" >&2
     chomp; 
     $f = $_;
     
-    # 1. Global Ignore
+    # Clean ./ prefix from find
+    $f =~ s/^\.\///;
+
+    # Filter
     next if ($f =~ $ignore_re);
     next unless (-f $f);
-
-    # 2. Preset/Argument Filter
+    
     if ($filter_active) {
-        # Check against the regex generated from args
-        $base = $f; 
-        $base =~ s{.*/}{}; # Get filename only
-        # We check both the full path extension AND the filename (for things like Dockerfile)
+        $base = $f; $base =~ s{.*/}{}; 
         next unless ($base =~ $filter_re);
     }
 
     push @files, $f;
 
-    # 3. Content Security & Size Checks
-    if ($f =~ $sec_re) { $skipped{$f} = "Security"; next; }
-    if (-B $f) { $skipped{$f} = "Binary"; next; }
+    # Content Checks
+    if ($f =~ $sec_re) { next; } 
+    if (-B $f) { next; }
     $size = -s $f;
-    if ($size > $max_size || $size == 0) { $skipped{$f} = "Size/Empty"; next; }
+    if ($size > $max_size || $size == 0) { next; }
 
-    # 4. Language Detection
+    # Lang
     $ext = $f; $ext =~ s/.*\.//;
     $lang = $ext;
     %map = (
@@ -141,42 +131,28 @@ echo -e "\033[0;36mScanning & Filtering...\033[0m" >&2
     );
     $lang = $map{lc($ext)} if exists $map{lc($ext)};
 
-    # 5. Buffer Content
-    push @content_out, "## File: $f\n```$lang\n";
+    # --- RAW STREAM (No Line Numbers) ---
+    print "## File: $f\n```$lang\n";
     if (open(my $fh, "<", $f)) {
-        $ln = 1;
-        while(<$fh>) { push @content_out, sprintf("%6d\t%s", $ln++, $_); }
+        while(<$fh>) { print $_; }
         close($fh);
         $count++;
         $total_bytes += $size;
     }
-    push @content_out, "```\n\n";
+    print "```\n\n";
 
     END {
-        # --- OUTPUT ---
-        print "# Context: $root\n";
-        if ($filter_active) { print "### Filter: $args\n"; }
-        print "## Project Structure\n```text\n";
+        # --- FLAT FILE LIST ---
+        print "\n_Project Structure:_\n";
+        print "```text\n";
         
-        # Tree Generation
-        @sorted = sort @files;
-        %seen = ();
-        foreach $path (@sorted) {
-            @parts = split(/\//, $path);
-            $depth = 0;
-            for ($i = 0; $i < @parts; $i++) {
-                $curr = join("/", @parts[0..$i]);
-                if (!$seen{$curr}) {
-                    print "│   " x $depth . "├── " . $parts[$i] . ($i < $#parts ? "/" : "") . "\n";
-                    $seen{$curr} = 1;
-                }
-                $depth++;
-            }
+        # Simple sorted list of paths
+        foreach $path (sort @files) {
+            print "$path\n";
         }
-        print "```\n\n";
-        print @content_out;
+        print "```\n";
 
-        # Stats for Bash
+        # Stats
         $tokens = int($total_bytes / 4);
         if ($total_bytes < 1024) { $hsize = sprintf("%d B", $total_bytes); }
         elsif ($total_bytes < 1048576) { $hsize = sprintf("%.2f KB", $total_bytes/1024); }
@@ -211,7 +187,7 @@ $CMD_PREFIX install -m 755 "$TMP_PAYLOAD" "$TARGET_PATH"
 rm -f "$TMP_PAYLOAD"
 
 if [ -x "$TARGET_PATH" ]; then
-    echo -e "${GREEN}✔ Installed v12.0.${NC}"
+    echo -e "${GREEN}✔ Installed v16.0.${NC}"
 else
     echo -e "${RED}✘ Failed.${NC}"
 fi
