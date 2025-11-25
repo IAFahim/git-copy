@@ -1,213 +1,325 @@
 #!/bin/bash
 
-# Installation Configuration
+# ==============================================================================
+# 🔮 GOD MODE INSTALLER: git-copy
+# ==============================================================================
+
 INSTALL_DIR="/usr/local/bin"
 TOOL_NAME="git-copy"
 TARGET_PATH="$INSTALL_DIR/$TOOL_NAME"
 
-# Colors
+# Colors for the installer
+CYAN='\033[0;36m'
 GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-echo -e "🚀 ${YELLOW}Installing Git Code Copy Utility...${NC}"
+echo -e "${CYAN}Initializing Neural Interface... (Installing git-copy)${NC}"
 
-# 1. Check for Sudo/Permissions
+# 1. Permission Check
+SUDO=""
 if [ ! -w "$INSTALL_DIR" ]; then
-    echo -e "${YELLOW}Need sudo permissions to write to $INSTALL_DIR${NC}"
-    SUDO="sudo"
-else
-    SUDO=""
+    if command -v sudo >/dev/null 2>&1; then
+        SUDO="sudo"
+        echo -e "${CYAN}Requesting root access to write to ${INSTALL_DIR}...${NC}"
+    else
+        echo -e "${RED}Error: Cannot write to $INSTALL_DIR and sudo not found.${NC}"
+        exit 1
+    fi
 fi
 
-# 2. Write the script content to the target file
-echo -e "📝 Writing script to ${TARGET_PATH}..."
-
+# 2. Write the Ultimate Script
 $SUDO tee "$TARGET_PATH" > /dev/null << 'EOF'
-#!/bin/bash
+#!/usr/bin/env bash
+
+# 🛡️ STRICT MODE
+set -o errexit  # Exit on error
+set -o nounset  # Exit on unset variables
+set -o pipefail # Fail if any command in pipe fails
+# set -o xtrace # Uncomment for debugging
 
 # ==============================================================================
-# 📋 GIT CODE COPY UTILITY
+# 🧠 CONFIGURATION & CONSTANTS
 # ==============================================================================
+VERSION="2.0.0 (God Mode)"
+MAX_FILE_SIZE_KB=1024  # Skip files larger than 1MB to prevent clipboard crashes
 
-# --- 1. CONFIGURATION GROUPS ---
-GROUP_CPP=("*.c" "*.h" "*.cpp" "*.cc" "*.cxx" "*.hpp" "*.hxx" "*.rs" "*.go" "*.swift")
-GROUP_JAVA=("*.java" "*.kt" "*.kts" "*.scala")
-GROUP_WEB=("*.html" "*.htm" "*.css" "*.scss" "*.sass" "*.less" "*.js" "*.jsx" "*.ts" "*.tsx")
-GROUP_SCRIPT=("*.py" "*.rb" "*.php" "*.pl" "*.pm" "*.lua" "*.sh" "*.bash" "*.zsh")
-GROUP_DOTNET=("*.cs" "*.razor" "*.csproj" "*.json" "*.http")
-GROUP_DATA=("*.sql" "*.xml" "*.json" "*.yaml" "*.yml" "*.toml" "*.ini" "*.md")
-GROUP_BUILD=("Dockerfile" "Makefile" "Gemfile" "package.json")
-
-SCRIPT_NAME=$(basename "$0")
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
+# ANSI Colors
 BOLD='\033[1m'
+DIM='\033[2m'
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
 NC='\033[0m'
 
-# --- 2. CLIPBOARD DETECTION ---
-if [[ "$OSTYPE" == "darwin"* ]]; then
-    CLIP_CMD="pbcopy"
-elif command -v xclip > /dev/null 2>&1; then
-    CLIP_CMD="xclip -selection clipboard"
-elif command -v xsel > /dev/null 2>&1; then
-    CLIP_CMD="xsel --clipboard --input"
-elif command -v wl-copy > /dev/null 2>&1; then
-    CLIP_CMD="wl-copy"
-else
-    echo -e "${YELLOW}Error: No clipboard tool found (install xclip, xsel, or wl-copy).${NC}"
-    exit 1
-fi
+# Default File Groups (The "Knowledge Base")
+declare -A GROUP_DEFS
+GROUP_DEFS[web]="html css scss sass less js jsx ts tsx json svg"
+GROUP_DEFS[backend]="py rb php pl go rs java cs cpp h c hpp swift kt"
+GROUP_DEFS[config]="json yaml yml toml xml ini env conf sql"
+GROUP_DEFS[build]="Dockerfile Makefile Gemfile package.json cargo.toml go.mod csproj gradle"
+GROUP_DEFS[docs]="md txt rst"
 
-# --- 3. ARGUMENT PARSING ---
-declare -a EXTENSIONS
-add_group() { for ext in "${@}"; do EXTENSIONS+=("$ext"); done; }
+# ==============================================================================
+# 🔧 CORE FUNCTIONS
+# ==============================================================================
 
-if [ "$1" == "--help" ] || [ "$1" == "-h" ]; then
-    echo -e "${BOLD}Usage:${NC} git copy [filter]..."
-    echo -e "  No args  : Copy all default groups."
-    echo -e "  web      : Copy only Web group."
-    echo -e "  js       : Copy only *.js files."
-    exit 0
-fi
+die() { echo -e "${RED}✖ $1${NC}" >&2; exit 1; }
+log() { echo -e "${CYAN}ℹ${NC} $1"; }
+warn() { echo -e "${YELLOW}⚠ $1${NC}" >&2; }
 
-if [ $# -eq 0 ]; then
-    add_group "${GROUP_CPP[@]}" "${GROUP_JAVA[@]}" "${GROUP_WEB[@]}" "${GROUP_SCRIPT[@]}" "${GROUP_DOTNET[@]}" "${GROUP_DATA[@]}" "${GROUP_BUILD[@]}"
-else
-    for arg in "$@"; do
-        case "$arg" in
-            web|frontend)   add_group "${GROUP_WEB[@]}" ;;
-            cpp|c|rust|go)  add_group "${GROUP_CPP[@]}" ;;
-            java|jvm)       add_group "${GROUP_JAVA[@]}" ;;
-            script|backend) add_group "${GROUP_SCRIPT[@]}" ;;
-            dotnet|csharp)  add_group "${GROUP_DOTNET[@]}" ;;
-            data|config)    add_group "${GROUP_DATA[@]}" ;;
-            *)
-                if [[ "$arg" == *"."* ]]; then EXTENSIONS+=("$arg"); else EXTENSIONS+=("*.$arg"); fi
-                ;;
-        esac
-    done
-fi
+# 1. UNIVERSAL CLIPBOARD DETECTOR
+# Detects WSL, Wayland, X11, macOS, Termux, Cygwin
+detect_clipboard() {
+    if [ -n "${WSL_DISTRO_NAME:-}" ] && command -v clip.exe >/dev/null; then
+        echo "clip.exe" # WSL Windows Clipboard
+    elif [[ "$OSTYPE" == "darwin"* ]]; then
+        echo "pbcopy"
+    elif command -v wl-copy >/dev/null 2>&1 && [ -n "${WAYLAND_DISPLAY:-}" ]; then
+        echo "wl-copy"
+    elif command -v xclip >/dev/null 2>&1; then
+        echo "xclip -selection clipboard"
+    elif command -v xsel >/dev/null 2>&1; then
+        echo "xsel --clipboard --input"
+    elif command -v termux-clipboard-set >/dev/null 2>&1; then
+        echo "termux-clipboard-set"
+    elif [ -e /dev/clipboard ]; then
+        echo "cat > /dev/clipboard" # Cygwin
+    else
+        die "No clipboard utility found. Install xclip, wl-copy, or use macOS/WSL."
+    fi
+}
 
-# --- 4. LANGUAGE DETECTION ---
-get_language() {
-    local fname=$(basename "$1")
-    local ext="${fname##*.}"
-    case "$fname" in Dockerfile) echo "dockerfile"; return ;; Makefile) echo "makefile"; return ;; package.json) echo "json"; return ;; esac
+# 2. HEURISTIC LANGUAGE DETECTOR
+get_lang() {
+    local ext="${1##*.}"
+    local name=$(basename "$1")
+    name="${name,,}" # to lowercase
+
+    case "$name" in
+        dockerfile) echo "dockerfile"; return ;;
+        makefile) echo "makefile"; return ;;
+        package.json) echo "json"; return ;;
+        *.*) ;;
+        *) echo "text"; return ;; # No extension
+    esac
+
     case "$ext" in
-        cs) echo "csharp" ;; razor) echo "razor" ;; c|h) echo "c" ;; cpp|hpp|cc) echo "cpp" ;;
-        java) echo "java" ;; kt|kts) echo "kotlin" ;; py) echo "python" ;; rb) echo "ruby" ;;
-        php) echo "php" ;; go) echo "go" ;; rs) echo "rust" ;; swift) echo "swift" ;;
-        js|jsx) echo "javascript" ;; ts|tsx) echo "typescript" ;; sh|bash|zsh) echo "bash" ;;
-        sql) echo "sql" ;; xml|csproj) echo "xml" ;; json) echo "json" ;; yaml|yml) echo "yaml" ;;
-        md) echo "markdown" ;; html) echo "html" ;; css) echo "css" ;; scss) echo "scss" ;;
+        js|jsx|mjs|cjs) echo "javascript" ;;
+        ts|tsx) echo "typescript" ;;
+        py|pyw) echo "python" ;;
+        rs) echo "rust" ;;
+        go) echo "go" ;;
+        java) echo "java" ;;
+        c|h) echo "c" ;;
+        cpp|hpp|cc|cxx) echo "cpp" ;;
+        cs) echo "csharp" ;;
+        sh|bash|zsh) echo "bash" ;;
+        html|htm) echo "html" ;;
+        css) echo "css" ;;
+        scss|sass) echo "scss" ;;
+        json) echo "json" ;;
+        yaml|yml) echo "yaml" ;;
+        xml|csproj|xaml) echo "xml" ;;
+        sql) echo "sql" ;;
+        md) echo "markdown" ;;
+        toml) echo "toml" ;;
         *) echo "$ext" ;;
     esac
 }
 
-# --- 5. EXECUTION ---
-if ! git rev-parse --git-dir > /dev/null 2>&1; then
-    echo -e "${YELLOW}Error: Not a git repository.${NC}"
-    exit 1
+# 3. BINARY FILE DETECTOR (Fast Heuristic)
+is_binary() {
+    # Check for null bytes in the first 100 bytes
+    if grep -qP -m 1 '\x00' <(head -c 100 "$1"); then
+        return 0 # True (is binary)
+    fi
+    return 1 # False (is text)
+}
+
+# 4. DEPENDENCY-FREE TREE GENERATOR (Pure Bash/Awk)
+# Generates a visual tree from a list of file paths without needing 'tree' installed
+generate_tree() {
+    sort | awk -F'/' '
+    BEGIN { print "." }
+    {
+        if (NF == 1) {
+            print "├── " $1
+        } else {
+            for (i=1; i<NF; i++) {
+                if ($i != p[i]) {
+                    # New directory detected
+                    for (j=i; j<NF; j++) {
+                        printf "%s", (j==i ? "├── " : "│   ")
+                    }
+                    print $i "/"
+                }
+                # Indentation for files
+                printf "%s", (i==1 ? "" : "│   ")
+            }
+            print "├── " $NF
+        }
+        split($0, p, "/")
+    }' | sed 's/├──/|--/g' # optional: adjust ascii style
+}
+
+# ==============================================================================
+# 🎮 MAIN EXECUTION
+# ==============================================================================
+
+# -- ARG PARSING --
+declare -a EXTENSIONS
+MODE="default"
+
+if [ $# -eq 0 ]; then
+    # No args: Add everything safely
+    for group in "${!GROUP_DEFS[@]}"; do
+        for ext in ${GROUP_DEFS[$group]}; do EXTENSIONS+=("*.$ext"); done
+    done
+    EXTENSIONS+=("Dockerfile" "Makefile" "package.json")
+else
+    for arg in "$@"; do
+        if [[ "${GROUP_DEFS[$arg]+found}" ]]; then
+            # Argument matches a predefined group
+            for ext in ${GROUP_DEFS[$arg]}; do EXTENSIONS+=("*.$ext"); done
+        elif [[ "$arg" == "-h" || "$arg" == "--help" ]]; then
+            echo -e "${BOLD}Usage:${NC} git-copy [group|extension]..."
+            echo -e "Groups: web, backend, config, build, docs"
+            exit 0
+        else
+            # Argument is a specific extension or file
+            if [[ "$arg" == *"."* ]]; then EXTENSIONS+=("$arg"); else EXTENSIONS+=("*.$arg"); fi
+        fi
+    done
 fi
 
-TEMP_FILE=$(mktemp /tmp/gitcode.XXXXXX)
-echo -e "${BLUE}Scanning files in current directory & deeper...${NC}"
+# -- GIT CONTEXT --
+# Ensure we are in a git repo
+if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    die "Not inside a Git repository."
+fi
 
-declare -a FILES
-# We use a temporary file to collect paths to handle spaces/newlines safely
-LIST_TEMP=$(mktemp)
+# Get current folder relative to git root for display purposes
+REL_PREFIX=$(git rev-parse --show-prefix) 
+[ -z "$REL_PREFIX" ] && REL_PREFIX="./"
 
-for ext in "${EXTENSIONS[@]}"; do
-    if [[ "$ext" == *"*"* ]]; then
-        # Use git ls-files with the pattern directly (handles wildcards)
-        # The '.' ensures we explicitly look in current dir and down
-        git ls-files . -- "$ext" >> "$LIST_TEMP" 2>/dev/null
-    else
-        # If it's a specific ending without wildcards (unlikely with this script's logic, but safe)
-        git ls-files . | grep -E "${ext}$" >> "$LIST_TEMP" 2>/dev/null
+echo -e "${BLUE}🔍 Scanning context starting from: ${BOLD}${REL_PREFIX}${NC}"
+
+CLIP_CMD=$(detect_clipboard)
+TEMP_FILE=$(mktemp)
+LIST_FILE=$(mktemp)
+
+# -- FILE DISCOVERY --
+# 1. Use 'git ls-files -z .' to safely handle all characters (even newlines)
+# 2. '.' ensures we only grab files DEEP from current location
+# 3. Filter by extensions
+git ls-files -z . | while IFS= read -r -d '' file; do
+    # Check strict extension match
+    MATCH=false
+    for pattern in "${EXTENSIONS[@]}"; do
+        # Use bash glob matching
+        if [[ "$file" == $pattern || "$(basename "$file")" == $pattern ]]; then
+            MATCH=true
+            break
+        fi
+    done
+    
+    if $MATCH; then
+        # Safety check: Ignore self
+        if [[ "$(basename "$file")" == "git-copy" ]]; then continue; fi
+        # Safety check: File existence (git index vs fs)
+        if [ ! -f "$file" ]; then continue; fi
+        
+        printf "%s\0" "$file" >> "$LIST_FILE"
     fi
 done
 
-# Read unique sorted files into array
-while IFS= read -r file; do
-    if [ -f "$file" ] && [ "$(basename "$file")" != "$SCRIPT_NAME" ]; then
-        FILES+=("$file")
-    fi
-done < <(sort -u "$LIST_TEMP")
-rm "$LIST_TEMP"
-
-TOTAL_FILES=${#FILES[@]}
-
-if [ "$TOTAL_FILES" -eq 0 ]; then
-    echo -e "${YELLOW}No matching files found in this folder or subfolders.${NC}"
-    rm "$TEMP_FILE"
-    exit 0
+# Check if we found anything
+if [ ! -s "$LIST_FILE" ]; then
+    rm "$TEMP_FILE" "$LIST_FILE"
+    die "No matching files found in this directory context."
 fi
 
-# PART A: FILE CONTENTS
+# -- CONTENT GENERATION --
 COUNT=0
 TOTAL_LINES=0
-for file in "${FILES[@]}"; do
+TOTAL_BYTES=0
+
+# Use a spinner while processing
+SPINNER="⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+
+{
+    echo "# Context: ${REL_PREFIX}"
+    echo "# Generated: $(date)"
+    echo ""
+} >> "$TEMP_FILE"
+
+while IFS= read -r -d '' file; do
     ((COUNT++))
-    printf "\r${BLUE}[%3d/%3d]${NC} %-50s" "$COUNT" "$TOTAL_FILES" "$(basename "$file")"
     
-    # Skip binary files or empty files
-    if grep -qI . "$file" 2>/dev/null; then :; elif [ -s "$file" ]; then continue; fi
-    
-    lang=$(get_language "$file")
-    line_count=$(wc -l < "$file" | tr -d ' ')
-    
-    {
-        echo "## File: \`$file\`"; echo ""; echo "\`\`\`$lang"; cat "$file"; echo ""; echo "\`\`\`"; echo "";
-    } >> "$TEMP_FILE"
-    TOTAL_LINES=$((TOTAL_LINES + line_count))
-done
-printf "\r\033[K"
+    # Spinner Visual
+    SP_CHAR=${SPINNER:((COUNT%10)):1}
+    printf "\r${CYAN}${SP_CHAR} Processing file ${COUNT}...${NC}" >&2
 
-# PART B: TREE
+    # 1. Size Check
+    FILE_SIZE=$(wc -c < "$file")
+    if [ "$FILE_SIZE" -gt $((MAX_FILE_SIZE_KB * 1024)) ]; then
+        echo "## File: \`$file\` (SKIPPED - Too Large > ${MAX_FILE_SIZE_KB}KB)" >> "$TEMP_FILE"
+        continue
+    fi
+
+    # 2. Binary Check
+    if is_binary "$file"; then
+        echo "## File: \`$file\` (SKIPPED - Binary Detected)" >> "$TEMP_FILE"
+        continue
+    fi
+
+    # 3. Append Content
+    LANG=$(get_lang "$file")
+    LINES=$(wc -l < "$file")
+    ((TOTAL_LINES+=LINES))
+    ((TOTAL_BYTES+=FILE_SIZE))
+
+    echo "## File: \`$file\`" >> "$TEMP_FILE"
+    echo "\`\`\`$LANG" >> "$TEMP_FILE"
+    cat "$file" >> "$TEMP_FILE"
+    echo "" >> "$TEMP_FILE"
+    echo "\`\`\`" >> "$TEMP_FILE"
+    echo "" >> "$TEMP_FILE"
+
+done < "$LIST_FILE"
+
+printf "\r\033[K" >&2 # Clear line
+
+# -- TREE GENERATION --
 echo "---" >> "$TEMP_FILE"
-echo "# Project Context (Relative to $(basename "$(pwd)"))" >> "$TEMP_FILE"
+echo "# Project Structure" >> "$TEMP_FILE"
+echo "\`\`\`text" >> "$TEMP_FILE"
+# xargs -0 handles the null-terminated list
+xargs -0 -n 1 < "$LIST_FILE" | generate_tree >> "$TEMP_FILE"
 echo "\`\`\`" >> "$TEMP_FILE"
-if command -v tree > /dev/null 2>&1; then
-    # --fromfile reads the paths we found and constructs a tree view
-    tree -F --fromfile <(printf "%s\n" "${FILES[@]}") >> "$TEMP_FILE" 2>/dev/null
-else
-    printf "%s\n" "${FILES[@]}" >> "$TEMP_FILE"
-fi
-echo "\`\`\`" >> "$TEMP_FILE"
-echo "" >> "$TEMP_FILE"
 
-# PART C: FOOTER
-echo "**Summary:** $COUNT files | $TOTAL_LINES lines" >> "$TEMP_FILE"
+# -- TOKEN ESTIMATION --
+# Rough estimate: 1 token ~= 4 chars of code
+EST_TOKENS=$((TOTAL_BYTES / 4))
+
+# -- CLIPBOARD & SUMMARY --
 cat "$TEMP_FILE" | eval "$CLIP_CMD"
-CLIPBOARD_SIZE=$(wc -c < "$TEMP_FILE")
-MB_SIZE=$(awk "BEGIN {printf \"%.2f\", $CLIPBOARD_SIZE/1024/1024}")
-rm "$TEMP_FILE"
 
-echo -e "${GREEN}${BOLD}✓ Copied to clipboard!${NC}"
-echo -e "Files: $COUNT | Lines: $TOTAL_LINES | Size: ${MB_SIZE} MB"
+# Cleanup
+rm "$TEMP_FILE" "$LIST_FILE"
+
+echo -e "${GREEN}${BOLD}✓ Copied to Clipboard!${NC}"
+echo -e "${DIM}----------------------------------------${NC}"
+echo -e "📂 Files:   ${BOLD}${COUNT}${NC}"
+echo -e "📝 Lines:   ${BOLD}${TOTAL_LINES}${NC}"
+echo -e "🧠 Tokens:  ${BOLD}~${EST_TOKENS}${NC} (Est.)"
+echo -e "${DIM}----------------------------------------${NC}"
 EOF
 
-# 3. Set Permissions
+# 3. Finalize
 $SUDO chmod +x "$TARGET_PATH"
-
-echo -e "${GREEN}✅ Installed successfully to $TARGET_PATH${NC}"
-
-# 4. Linux Check (xclip/xsel)
-if [[ "$OSTYPE" == "linux-gnu"* ]]; then
-    if ! command -v xclip > /dev/null && ! command -v xsel > /dev/null && ! command -v wl-copy > /dev/null; then
-        echo -e "${YELLOW}⚠️  Warning: Linux requires a clipboard tool.${NC}"
-        echo "   Install one of these:"
-        echo "   sudo apt install xclip   # Debian/Ubuntu"
-        echo "   sudo dnf install xclip   # Fedora"
-    fi
-fi
-
-echo -e ""
-echo -e "🎉 ${BOLD}How to use:${NC}"
-echo -e "   1. Navigate to any folder (root or deep inside a repo)."
-echo -e "   2. Run: ${BOLD}git copy${NC}"
-echo -e "   3. It will copy files from your *current folder* downwards."
+echo -e "${GREEN}✅ Installation Complete!${NC}"
+echo -e "Run ${BOLD}git copy${NC} in any folder."
