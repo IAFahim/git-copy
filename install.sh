@@ -1,49 +1,67 @@
 #!/bin/bash
 
 # ==============================================================================
-# 💎 OMNI-COPY: The Immutable Edition (v5.0)
-# "It doesn't guess. It knows."
+# 🌌 ENDGAME INSTALLER: git-copy (v6.0)
+# Stability: 100% | Aesthetics: God Tier | Logic: Whitelist
 # ==============================================================================
 
 TOOL_NAME="git-copy"
 INSTALL_DIR="/usr/local/bin"
 TARGET_PATH="$INSTALL_DIR/$TOOL_NAME"
 
-# Colors
+# Installer Colors
 CYAN='\033[0;36m'
+PURPLE='\033[0;35m'
 GREEN='\033[0;32m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-echo -e "${CYAN}>> INSTALLING OMNI-COPY (WHITELIST ENGINE) <<${NC}"
+echo -e "${PURPLE}________  ________  ________   __${NC}"
+echo -e "${PURPLE}|___  ___||   __   ||   __   | |  |${NC}"
+echo -e "${PURPLE}   |  |   |  |  |  ||  |  |  | |  |${NC}"
+echo -e "${PURPLE}   |  |   |  |__|  ||  |__|  | |  |__${NC}"
+echo -e "${PURPLE}   |__|   |________||________| |_____|${NC}"
+echo -e "${CYAN}   >> SYSTEM OPTIMIZATION: MAXIMUM <<${NC}"
+echo ""
 
-# Elevation
+# 1. Permission Check
 SUDO=""
-[ ! -w "$INSTALL_DIR" ] && command -v sudo >/dev/null && SUDO="sudo"
+if [ ! -w "$INSTALL_DIR" ]; then
+    if command -v sudo >/dev/null 2>&1; then SUDO="sudo"; else
+        echo -e "${RED}💀 Fatal: Need root access to write to $INSTALL_DIR${NC}"; exit 1
+    fi
+fi
 
-# Write Script
+# 2. Write the Script
 $SUDO tee "$TARGET_PATH" > /dev/null << 'EOF'
 #!/usr/bin/env bash
 
-# Strict Mode
+# 🛡️ STRICT MODE
 set -o nounset
 set -o pipefail
+# set -o errexit # Disabled so read errors don't kill the whole process
 
 # ------------------------------------------------------------------------------
-# 🛡️ CONFIGURATION (THE TRUTH)
+# 🎨 VISUALS & CONFIG
 # ------------------------------------------------------------------------------
+BOLD='\033[1m'
+DIM='\033[2m'
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+NC='\033[0m'
 
-# 1. The Green Lane (Whitelist)
-# If a file has this extension, we COPY it. No questions asked. No binary checks.
-# This prevents the script from falsely flagging your code as binary.
-SAFE_EXTENSIONS="cs|csproj|sln|user|vs|json|xml|html|css|scss|less|js|jsx|ts|tsx|vue|svelte|py|rb|go|rs|java|kt|c|h|cpp|hpp|sh|bash|zsh|yaml|yml|toml|md|txt|sql|graphql|dockerfile|makefile|gradle|properties|editorconfig|gitignore|env|conf|ini|svg"
+# 🧠 THE BRAIN (Whitelist Logic)
+# Trust these extensions implicitly. Do not scan them for binary data.
+SAFE_EXTENSIONS="cs|csproj|sln|user|vs|json|xml|html|css|scss|less|js|jsx|ts|tsx|vue|svelte|py|rb|go|rs|java|kt|c|h|cpp|hpp|sh|bash|zsh|yaml|yml|toml|md|txt|sql|graphql|dockerfile|makefile|gradle|properties|editorconfig|gitignore|env|conf|ini|svg|http"
 
-# 2. The Red Lane (Blacklist)
-# Files to NEVER copy (Security/Noise)
+# 🗑️ THE FILTER (Noise)
 IGNORE_FILES="package-lock.json|yarn.lock|Cargo.lock|Gemfile.lock|.DS_Store|Thumbs.db"
 SECURITY_FILES="id_rsa|id_dsa|.pem|.key|.p12|secrets"
 
-# 3. Settings
+# Settings
 MAX_SIZE_KB=1000
 TEMP_DIR=$(mktemp -d 2>/dev/null || mktemp -d -t 'git-copy')
 CONTEXT_FILE="${TEMP_DIR}/context.md"
@@ -51,39 +69,38 @@ CONTEXT_FILE="${TEMP_DIR}/context.md"
 trap "rm -rf $TEMP_DIR" EXIT
 
 # ------------------------------------------------------------------------------
-# 🧠 INTELLIGENCE
+# 🛠️ CORE FUNCTIONS
 # ------------------------------------------------------------------------------
 
-# Universal Clipboard
 copy_output() {
     if [[ "$OSTYPE" == "darwin"* ]]; then pbcopy
     elif [ -n "${WSL_DISTRO_NAME:-}" ]; then clip.exe
-    elif command -v wl-copy >/dev/null; then wl-copy
-    elif command -v xclip >/dev/null; then xclip -selection clipboard
-    else cat; fi # Fallback to stdout
+    elif command -v wl-copy >/dev/null 2>&1; then wl-copy
+    elif command -v xclip >/dev/null 2>&1; then xclip -selection clipboard
+    else cat; fi
 }
 
-# The "Clean" Tree Generator
-# Uses indentation only, no pipes, to save space and reduce visual noise.
-generate_clean_tree() {
+# 🌳 THE CLEAN TREE
+# Uses clean indentation (2 spaces) instead of pipes for max token efficiency.
+generate_tree() {
     sort | awk -F'/' '
     BEGIN { print "." }
     {
         indent = ""
         for (i=1; i<NF; i++) {
             if ($i != p[i]) {
+                # Print directory name
                 print indent $i "/"
-                # Update previous path
                 for (k=i; k<=NF; k++) p[k] = "" 
             }
             indent = indent "  "
         }
+        # Print file name
         print indent $NF
         split($0, p, "/")
     }'
 }
 
-# Language Tagger
 get_lang() {
     local ext="${1##*.}"
     case "$ext" in
@@ -106,37 +123,39 @@ get_lang() {
 }
 
 # ------------------------------------------------------------------------------
-# 🚀 EXECUTION
+# 🚀 MAIN EXECUTION
 # ------------------------------------------------------------------------------
 
-# 1. Gather Files
+# 1. Discover Context
 if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     ROOT=$(git rev-parse --show-toplevel)
-    # Get all files, respecting .gitignore
     git ls-files -z --exclude-standard -c -o . > "${TEMP_DIR}/raw"
 else
     ROOT=$(pwd)
     find . -type f -not -path '*/.*' -print0 > "${TEMP_DIR}/raw"
 fi
 
-# 2. Filter & Sort
+# 2. Sort List
 LIST_FILE="${TEMP_DIR}/list"
 xargs -0 -n 1 < "${TEMP_DIR}/raw" | sort > "$LIST_FILE"
 
-# 3. Generate Content
+# 3. Generate Header
 {
     echo "# Project Context"
     echo "- **Root:** \`$ROOT\`"
-    echo "- **Generated:** $(date)"
+    echo "- **Date:** $(date)"
     echo ""
     echo "## Structure"
     echo "\`\`\`text"
-    cat "$LIST_FILE" | generate_clean_tree
+    cat "$LIST_FILE" | generate_tree
     echo "\`\`\`"
     echo ""
 } > "$CONTEXT_FILE"
 
+# 4. Process Files
 COUNT=0
+TOTAL_LINES=0
+TOTAL_BYTES=0
 SKIP_BIN=0
 SKIP_SIZE=0
 
@@ -144,6 +163,10 @@ while IFS= read -r file; do
     [ -z "$file" ] && continue
     [[ "$(basename "$file")" == "git-copy" ]] && continue
     [ ! -f "$file" ] && continue
+
+    # Visual Spinner
+    ((COUNT++))
+    printf "\r${CYAN}⚡ Scanning file $COUNT...${NC}" >&2
 
     # A. Security Check
     if [[ "$file" =~ $SECURITY_FILES ]]; then
@@ -156,29 +179,24 @@ while IFS= read -r file; do
     # B. Noise Check
     if [[ "$file" =~ $IGNORE_FILES ]]; then continue; fi
 
-    # C. Decision Engine
+    # C. Whitelist Logic
     DO_COPY=false
     EXT="${file##*.}"
     LOWER_EXT=$(echo "$EXT" | tr '[:upper:]' '[:lower:]')
     
-    # C1. Check Whitelist (The Fix)
-    # If the extension is known safe, we skip the binary check entirely.
+    # C1. Whitelist Check (Fast Track)
     if [[ "$SAFE_EXTENSIONS" =~ (^|\|)$LOWER_EXT($|\|) ]]; then
         DO_COPY=true
     else
-        # C2. Fallback: Native File Check
-        # Only check unknown extensions.
-        if file -b --mime "$file" | grep -q "text"; then
+        # C2. Native File Check (Slow Track)
+        if file -b --mime "$file" 2>/dev/null | grep -q "text"; then
             DO_COPY=true
         else
-            # Try Mac specific flag
-            if file -bI "$file" 2>/dev/null | grep -q "text"; then
-                DO_COPY=true
-            fi
+             # Try Mac specific flag
+            if file -bI "$file" 2>/dev/null | grep -q "text"; then DO_COPY=true; fi
         fi
     fi
 
-    # D. Execute Decision
     if [ "$DO_COPY" = true ]; then
         # Size Check
         SIZE=$(wc -c < "$file")
@@ -188,9 +206,10 @@ while IFS= read -r file; do
             echo "" >> "$CONTEXT_FILE"
             ((SKIP_SIZE++))
         else
-            # COPY CONTENT
-            ((COUNT++))
-            printf "\r\033[0;36mProcessing: $file\033[0m\033[K" >&2
+            # COPY
+            LINES=$(wc -l < "$file")
+            ((TOTAL_LINES+=LINES))
+            ((TOTAL_BYTES+=SIZE))
             
             LANG=$(get_lang "$file")
             echo "## File: \`$file\`" >> "$CONTEXT_FILE"
@@ -202,24 +221,37 @@ while IFS= read -r file; do
         fi
     else
         echo "## File: \`$file\`" >> "$CONTEXT_FILE"
-        echo "> 🤖 **SKIPPED (Binary/Unknown)**" >> "$CONTEXT_FILE"
+        echo "> 🤖 **SKIPPED (Binary)**" >> "$CONTEXT_FILE"
         echo "" >> "$CONTEXT_FILE"
         ((SKIP_BIN++))
     fi
 
 done < "$LIST_FILE"
 
-# 4. Finalize
 printf "\r\033[K" >&2
+
+# 5. Final Output & Stats
 cat "$CONTEXT_FILE" | copy_output
 
-echo -e "${GREEN}✔ Context Copied!${NC}"
-echo -e "📄 Files Included: $COUNT"
-echo -e "🗑️  Skipped (Bin): $SKIP_BIN"
-echo -e "⚖️  Skipped (Big): $SKIP_SIZE"
+# Calc Tokens (Approx 1 token = 4 chars)
+TOKENS=$((TOTAL_BYTES / 4))
+SIZE_KB=$((TOTAL_BYTES / 1024))
+
+echo -e "${GREEN}${BOLD}✔ Copied to Clipboard!${NC}"
+echo -e "${DIM}────────────────────────────────────────${NC}"
+echo -e "📄 Files:     ${BOLD}${COUNT}${NC}"
+echo -e "📝 Lines:     ${BOLD}${TOTAL_LINES}${NC}"
+echo -e "💾 Size:      ${BOLD}${SIZE_KB} KB${NC}"
+echo -e "🧠 Tokens:    ${BOLD}~${TOKENS}${NC} (GPT-4 Est.)"
+echo -e "${DIM}────────────────────────────────────────${NC}"
+
+if [ "$SKIP_BIN" -gt 0 ] || [ "$SKIP_SIZE" -gt 0 ]; then
+    echo -e "${YELLOW}⚠ Skipped: ${SKIP_BIN} binary, ${SKIP_SIZE} large files.${NC}"
+fi
 
 EOF
 
+# 3. Finalize
 $SUDO chmod +x "$TARGET_PATH"
-echo -e "${GREEN}✅ OMNI-COPY INSTALLED.${NC}"
-echo "Run 'git copy' to test."
+echo -e "${GREEN}✅ Installation Complete.${NC}"
+echo -e "Run ${BOLD}git-copy${NC} in your project."
