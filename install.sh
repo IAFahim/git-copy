@@ -1,75 +1,57 @@
 #!/bin/bash
 
 # ==============================================================================
-# 🌌 ENDGAME INSTALLER: git-copy (v6.0)
-# Stability: 100% | Aesthetics: God Tier | Logic: Whitelist
+# 🧘 GIT-COPY: ZEN EDITION (v7.0)
+# "Perfection is achieved not when there is nothing more to add, 
+#  but when there is nothing left to take away."
 # ==============================================================================
 
 TOOL_NAME="git-copy"
 INSTALL_DIR="/usr/local/bin"
 TARGET_PATH="$INSTALL_DIR/$TOOL_NAME"
 
-# Installer Colors
+# Installer Visuals
 CYAN='\033[0;36m'
-PURPLE='\033[0;35m'
 GREEN='\033[0;32m'
-RED='\033[0;31m'
 NC='\033[0m'
 
-echo -e "${PURPLE}________  ________  ________   __${NC}"
-echo -e "${PURPLE}|___  ___||   __   ||   __   | |  |${NC}"
-echo -e "${PURPLE}   |  |   |  |  |  ||  |  |  | |  |${NC}"
-echo -e "${PURPLE}   |  |   |  |__|  ||  |__|  | |  |__${NC}"
-echo -e "${PURPLE}   |__|   |________||________| |_____|${NC}"
-echo -e "${CYAN}   >> SYSTEM OPTIMIZATION: MAXIMUM <<${NC}"
-echo ""
+echo -e "${CYAN}>> INSTALLING GIT-COPY (ZEN EDITION) <<${NC}"
 
-# 1. Permission Check
+# Elevation
 SUDO=""
-if [ ! -w "$INSTALL_DIR" ]; then
-    if command -v sudo >/dev/null 2>&1; then SUDO="sudo"; else
-        echo -e "${RED}💀 Fatal: Need root access to write to $INSTALL_DIR${NC}"; exit 1
-    fi
-fi
+[ ! -w "$INSTALL_DIR" ] && command -v sudo >/dev/null && SUDO="sudo"
 
-# 2. Write the Script
+# The Payload
 $SUDO tee "$TARGET_PATH" > /dev/null << 'EOF'
 #!/usr/bin/env bash
 
-# 🛡️ STRICT MODE
+# Strict Mode
 set -o nounset
 set -o pipefail
-# set -o errexit # Disabled so read errors don't kill the whole process
 
 # ------------------------------------------------------------------------------
-# 🎨 VISUALS & CONFIG
+# ⚙️ CONFIG
 # ------------------------------------------------------------------------------
+# Colors
+GREEN='\033[0;32m'
 BOLD='\033[1m'
 DIM='\033[2m'
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
-BLUE='\033[0;34m'
-CYAN='\033[0;36m'
 NC='\033[0m'
+CYAN='\033[0;36m'
 
-# 🧠 THE BRAIN (Whitelist Logic)
-# Trust these extensions implicitly. Do not scan them for binary data.
+# Logic
 SAFE_EXTENSIONS="cs|csproj|sln|user|vs|json|xml|html|css|scss|less|js|jsx|ts|tsx|vue|svelte|py|rb|go|rs|java|kt|c|h|cpp|hpp|sh|bash|zsh|yaml|yml|toml|md|txt|sql|graphql|dockerfile|makefile|gradle|properties|editorconfig|gitignore|env|conf|ini|svg|http"
-
-# 🗑️ THE FILTER (Noise)
 IGNORE_FILES="package-lock.json|yarn.lock|Cargo.lock|Gemfile.lock|.DS_Store|Thumbs.db"
 SECURITY_FILES="id_rsa|id_dsa|.pem|.key|.p12|secrets"
-
-# Settings
 MAX_SIZE_KB=1000
+
+# Temp
 TEMP_DIR=$(mktemp -d 2>/dev/null || mktemp -d -t 'git-copy')
 CONTEXT_FILE="${TEMP_DIR}/context.md"
-
 trap "rm -rf $TEMP_DIR" EXIT
 
 # ------------------------------------------------------------------------------
-# 🛠️ CORE FUNCTIONS
+# 🛠️ UTILS
 # ------------------------------------------------------------------------------
 
 copy_output() {
@@ -80,22 +62,18 @@ copy_output() {
     else cat; fi
 }
 
-# 🌳 THE CLEAN TREE
-# Uses clean indentation (2 spaces) instead of pipes for max token efficiency.
-generate_tree() {
+generate_clean_tree() {
     sort | awk -F'/' '
     BEGIN { print "." }
     {
         indent = ""
         for (i=1; i<NF; i++) {
             if ($i != p[i]) {
-                # Print directory name
                 print indent $i "/"
                 for (k=i; k<=NF; k++) p[k] = "" 
             }
             indent = indent "  "
         }
-        # Print file name
         print indent $NF
         split($0, p, "/")
     }'
@@ -123,10 +101,10 @@ get_lang() {
 }
 
 # ------------------------------------------------------------------------------
-# 🚀 MAIN EXECUTION
+# 🚀 EXECUTION
 # ------------------------------------------------------------------------------
 
-# 1. Discover Context
+# 1. Discover
 if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     ROOT=$(git rev-parse --show-toplevel)
     git ls-files -z --exclude-standard -c -o . > "${TEMP_DIR}/raw"
@@ -135,83 +113,56 @@ else
     find . -type f -not -path '*/.*' -print0 > "${TEMP_DIR}/raw"
 fi
 
-# 2. Sort List
+# 2. Sort & Filter
 LIST_FILE="${TEMP_DIR}/list"
 xargs -0 -n 1 < "${TEMP_DIR}/raw" | sort > "$LIST_FILE"
 
-# 3. Generate Header
+# 3. Header
 {
-    echo "# Project Context"
-    echo "- **Root:** \`$ROOT\`"
-    echo "- **Date:** $(date)"
-    echo ""
+    echo "# Context: $(basename "$ROOT")"
     echo "## Structure"
     echo "\`\`\`text"
-    cat "$LIST_FILE" | generate_tree
+    cat "$LIST_FILE" | generate_clean_tree
     echo "\`\`\`"
     echo ""
 } > "$CONTEXT_FILE"
 
-# 4. Process Files
+# 4. Process
 COUNT=0
-TOTAL_LINES=0
 TOTAL_BYTES=0
-SKIP_BIN=0
-SKIP_SIZE=0
 
 while IFS= read -r file; do
     [ -z "$file" ] && continue
     [[ "$(basename "$file")" == "git-copy" ]] && continue
     [ ! -f "$file" ] && continue
 
-    # Visual Spinner
-    ((COUNT++))
-    printf "\r${CYAN}⚡ Scanning file $COUNT...${NC}" >&2
+    # Visual (Overwrites itself line by line)
+    printf "\r${DIM}Scanning... $file${NC}\033[K" >&2
 
-    # A. Security Check
-    if [[ "$file" =~ $SECURITY_FILES ]]; then
-        echo "## File: \`$file\`" >> "$CONTEXT_FILE"
-        echo "> 🔒 **CENSORED (Security)**" >> "$CONTEXT_FILE"
-        echo "" >> "$CONTEXT_FILE"
-        continue
-    fi
-    
-    # B. Noise Check
+    # Logic
+    if [[ "$file" =~ $SECURITY_FILES ]]; then continue; fi
     if [[ "$file" =~ $IGNORE_FILES ]]; then continue; fi
 
-    # C. Whitelist Logic
     DO_COPY=false
     EXT="${file##*.}"
     LOWER_EXT=$(echo "$EXT" | tr '[:upper:]' '[:lower:]')
     
-    # C1. Whitelist Check (Fast Track)
+    # Whitelist vs Native Check
     if [[ "$SAFE_EXTENSIONS" =~ (^|\|)$LOWER_EXT($|\|) ]]; then
         DO_COPY=true
-    else
-        # C2. Native File Check (Slow Track)
-        if file -b --mime "$file" 2>/dev/null | grep -q "text"; then
-            DO_COPY=true
-        else
-             # Try Mac specific flag
-            if file -bI "$file" 2>/dev/null | grep -q "text"; then DO_COPY=true; fi
-        fi
+    elif file -b --mime "$file" 2>/dev/null | grep -q "text"; then
+        DO_COPY=true
+    elif file -bI "$file" 2>/dev/null | grep -q "text"; then 
+        DO_COPY=true
     fi
 
     if [ "$DO_COPY" = true ]; then
-        # Size Check
         SIZE=$(wc -c < "$file")
-        if [ "$SIZE" -gt $((MAX_SIZE_KB * 1024)) ]; then
-            echo "## File: \`$file\`" >> "$CONTEXT_FILE"
-            echo "> ⚠️ **SKIPPED (Too Large: $((SIZE/1024))KB)**" >> "$CONTEXT_FILE"
-            echo "" >> "$CONTEXT_FILE"
-            ((SKIP_SIZE++))
-        else
-            # COPY
-            LINES=$(wc -l < "$file")
-            ((TOTAL_LINES+=LINES))
+        if [ "$SIZE" -lt $((MAX_SIZE_KB * 1024)) ]; then
+            ((COUNT++))
             ((TOTAL_BYTES+=SIZE))
-            
             LANG=$(get_lang "$file")
+            
             echo "## File: \`$file\`" >> "$CONTEXT_FILE"
             echo "\`\`\`$LANG" >> "$CONTEXT_FILE"
             cat "$file" >> "$CONTEXT_FILE"
@@ -219,39 +170,20 @@ while IFS= read -r file; do
             echo "\`\`\`" >> "$CONTEXT_FILE"
             echo "" >> "$CONTEXT_FILE"
         fi
-    else
-        echo "## File: \`$file\`" >> "$CONTEXT_FILE"
-        echo "> 🤖 **SKIPPED (Binary)**" >> "$CONTEXT_FILE"
-        echo "" >> "$CONTEXT_FILE"
-        ((SKIP_BIN++))
     fi
-
 done < "$LIST_FILE"
 
-printf "\r\033[K" >&2
-
-# 5. Final Output & Stats
+# 5. Output
 cat "$CONTEXT_FILE" | copy_output
+printf "\r\033[K" >&2 # Clear scanning line
 
-# Calc Tokens (Approx 1 token = 4 chars)
 TOKENS=$((TOTAL_BYTES / 4))
-SIZE_KB=$((TOTAL_BYTES / 1024))
+if [ "$TOKENS" -gt 1000 ]; then TOKEN_STR="$((TOKENS/1000))k"; else TOKEN_STR="$TOKENS"; fi
 
-echo -e "${GREEN}${BOLD}✔ Copied to Clipboard!${NC}"
-echo -e "${DIM}────────────────────────────────────────${NC}"
-echo -e "📄 Files:     ${BOLD}${COUNT}${NC}"
-echo -e "📝 Lines:     ${BOLD}${TOTAL_LINES}${NC}"
-echo -e "💾 Size:      ${BOLD}${SIZE_KB} KB${NC}"
-echo -e "🧠 Tokens:    ${BOLD}~${TOKENS}${NC} (GPT-4 Est.)"
-echo -e "${DIM}────────────────────────────────────────${NC}"
-
-if [ "$SKIP_BIN" -gt 0 ] || [ "$SKIP_SIZE" -gt 0 ]; then
-    echo -e "${YELLOW}⚠ Skipped: ${SKIP_BIN} binary, ${SKIP_SIZE} large files.${NC}"
-fi
+# THE ONE LINER
+echo -e "${GREEN}✔ Copied ${BOLD}${COUNT}${NC}${GREEN} files (${BOLD}~${TOKEN_STR} tokens${NC}${GREEN}) to clipboard.${NC}"
 
 EOF
 
-# 3. Finalize
 $SUDO chmod +x "$TARGET_PATH"
-echo -e "${GREEN}✅ Installation Complete.${NC}"
-echo -e "Run ${BOLD}git-copy${NC} in your project."
+echo -e "${GREEN}✔ Installed.${NC}"
