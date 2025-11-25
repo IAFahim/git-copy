@@ -114,21 +114,35 @@ if ! git rev-parse --git-dir > /dev/null 2>&1; then
 fi
 
 TEMP_FILE=$(mktemp /tmp/gitcode.XXXXXX)
-echo -e "${BLUE}Scanning for files...${NC}"
+echo -e "${BLUE}Scanning files in current directory & deeper...${NC}"
 
 declare -a FILES
+# We use a temporary file to collect paths to handle spaces/newlines safely
+LIST_TEMP=$(mktemp)
+
 for ext in "${EXTENSIONS[@]}"; do
-    if [[ "$ext" == *"*"* ]]; then CMD="git ls-files \"$ext\""; else CMD="git ls-files | grep \"$ext$\""; fi
-    while IFS= read -r file; do
-        if [ -f "$file" ] && [ "$(basename "$file")" != "$SCRIPT_NAME" ]; then FILES+=("$file"); fi
-    done < <(eval "$CMD" 2>/dev/null)
+    if [[ "$ext" == *"*"* ]]; then
+        # Use git ls-files with the pattern directly (handles wildcards)
+        # The '.' ensures we explicitly look in current dir and down
+        git ls-files . -- "$ext" >> "$LIST_TEMP" 2>/dev/null
+    else
+        # If it's a specific ending without wildcards (unlikely with this script's logic, but safe)
+        git ls-files . | grep -E "${ext}$" >> "$LIST_TEMP" 2>/dev/null
+    fi
 done
 
-if [ ${#FILES[@]} -gt 0 ]; then IFS=$'\n' FILES=($(sort -u <<<"${FILES[*]}")); unset IFS; fi
+# Read unique sorted files into array
+while IFS= read -r file; do
+    if [ -f "$file" ] && [ "$(basename "$file")" != "$SCRIPT_NAME" ]; then
+        FILES+=("$file")
+    fi
+done < <(sort -u "$LIST_TEMP")
+rm "$LIST_TEMP"
+
 TOTAL_FILES=${#FILES[@]}
 
 if [ "$TOTAL_FILES" -eq 0 ]; then
-    echo -e "${YELLOW}No matching files found.${NC}"
+    echo -e "${YELLOW}No matching files found in this folder or subfolders.${NC}"
     rm "$TEMP_FILE"
     exit 0
 fi
@@ -139,6 +153,8 @@ TOTAL_LINES=0
 for file in "${FILES[@]}"; do
     ((COUNT++))
     printf "\r${BLUE}[%3d/%3d]${NC} %-50s" "$COUNT" "$TOTAL_FILES" "$(basename "$file")"
+    
+    # Skip binary files or empty files
     if grep -qI . "$file" 2>/dev/null; then :; elif [ -s "$file" ]; then continue; fi
     
     lang=$(get_language "$file")
@@ -153,9 +169,10 @@ printf "\r\033[K"
 
 # PART B: TREE
 echo "---" >> "$TEMP_FILE"
-echo "# Project Context" >> "$TEMP_FILE"
+echo "# Project Context (Relative to $(basename "$(pwd)"))" >> "$TEMP_FILE"
 echo "\`\`\`" >> "$TEMP_FILE"
 if command -v tree > /dev/null 2>&1; then
+    # --fromfile reads the paths we found and constructs a tree view
     tree -F --fromfile <(printf "%s\n" "${FILES[@]}") >> "$TEMP_FILE" 2>/dev/null
 else
     printf "%s\n" "${FILES[@]}" >> "$TEMP_FILE"
@@ -191,6 +208,6 @@ fi
 
 echo -e ""
 echo -e "🎉 ${BOLD}How to use:${NC}"
-echo -e "   Go to any git folder and run:"
-echo -e "   ${BOLD}git copy${NC}       (Copies all files)"
-echo -e "   ${BOLD}git copy web${NC}   (Copies web files)"
+echo -e "   1. Navigate to any folder (root or deep inside a repo)."
+echo -e "   2. Run: ${BOLD}git copy${NC}"
+echo -e "   3. It will copy files from your *current folder* downwards."
