@@ -13,7 +13,7 @@ PURPLE='\033[0;35m'
 GREEN='\033[0;32m'
 NC='\033[0m'
 
-echo -e "${PURPLE}>> INSTALLING GIT-COPY v16 (PURE STREAM) <<${NC}"
+echo -e "${PURPLE}>> INSTALLING GIT-COPY v16.1 (UNITY EDITION) <<${NC}"
 
 # Permissions Check
 CMD_PREFIX=""
@@ -26,7 +26,7 @@ cat > "$TMP_PAYLOAD" << 'EOF'
 #!/usr/bin/env bash
 
 # ------------------------------------------------------------------------------
-# ⚡ GIT-COPY | v16.0 | The Purist
+# ⚡ GIT-COPY | v16.1 | Unity Edition
 # ------------------------------------------------------------------------------
 set -o nounset
 set -o pipefail
@@ -63,6 +63,7 @@ echo -e "\033[0;36mProcessing...\033[0m" >&2
             "web"     => "html|htm|css|scss|sass|less|js|jsx|ts|tsx|json|svg|vue|svelte",
             "backend" => "py|rb|php|pl|go|rs|java|cs|cpp|h|c|hpp|swift|kt|ex|exs|sh",
             "dotnet"  => "cs|razor|csproj|json|http|xaml",
+            "unity"   => "cs|shader|cginc|hlsl|glsl|asmdef|asmref|uss|uxml|json|yaml",
             "java"    => "java|kt|kts|scala",
             "cpp"     => "c|h|cpp|cc|cxx|hpp|hxx|rs|go|swift",
             "script"  => "py|rb|php|pl|pm|lua|sh|bash|zsh",
@@ -90,7 +91,9 @@ echo -e "\033[0;36mProcessing...\033[0m" >&2
         }
 
         # Regex
-        $ignore_re = qr/package-lock\.json|yarn\.lock|Cargo\.lock|\.DS_Store|Thumbs\.db|\.git\/|\.png$|\.jpg$|\.jpeg$|\.gif$|\.ico$|\.woff2?$|\.pdf$|\.exe$|\.bin$|\.pyc$|\.dll$|\.pdb$|\.min\.js$|\.min\.css$/i;
+        # Added \.meta$ to the end to drop Unity meta files
+        $ignore_re = qr/package-lock\.json|yarn\.lock|Cargo\.lock|\.DS_Store|Thumbs\.db|\.git\/|\.png$|\.jpg$|\.jpeg$|\.gif$|\.ico$|\.woff2?$|\.pdf$|\.exe$|\.bin$|\.pyc$|\.dll$|\.pdb$|\.min\.js$|\.min\.css$|\.meta$/i;
+        
         $sec_re = qr/id_rsa|id_dsa|\.pem|\.key|\.p12|\.env|secrets|credentials/i;
 
         @files = ();
@@ -127,7 +130,8 @@ echo -e "\033[0;36mProcessing...\033[0m" >&2
     %map = (
         "js" => "javascript", "ts" => "typescript", "py" => "python",
         "cs" => "csharp", "sh" => "bash", "md" => "markdown", 
-        "h" => "c", "hpp" => "cpp", "razor" => "html", "vue" => "html"
+        "h" => "c", "hpp" => "cpp", "razor" => "html", "vue" => "html",
+        "shader" => "glsl", "cginc" => "glsl", "hlsl" => "glsl", "uss" => "css", "uxml" => "xml"
     );
     $lang = $map{lc($ext)} if exists $map{lc($ext)};
 
@@ -187,7 +191,7 @@ $CMD_PREFIX install -m 755 "$TMP_PAYLOAD" "$TARGET_PATH"
 rm -f "$TMP_PAYLOAD"
 
 if [ -x "$TARGET_PATH" ]; then
-    echo -e "${GREEN}✔ Installed v16.0.${NC}"
+    echo -e "${GREEN}✔ Installed v16.1 (Unity Edition).${NC}"
 else
     echo -e "${RED}✘ Failed.${NC}"
 fi
