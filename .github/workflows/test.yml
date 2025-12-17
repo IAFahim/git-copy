@@ -37,9 +37,9 @@ jobs:
               $Value | Set-Content "clipboard_output.md"
           }
 
-          # 2. Run the script against TestProject
+          # 2. Run the LOCAL script against TestProject
           cd TestProject
-          & ..\install.ps1
+          & ..\git-copy.ps1
 
           # 3. Read Output
           if (Test-Path "clipboard_output.md") {
@@ -125,7 +125,6 @@ jobs:
           sudo ./install.sh
 
           # MOCK CLIPBOARD TOOLS
-          # We create fake pbcopy/xclip that write to a file called 'mock_clipboard.txt'
           mkdir -p $HOME/bin
           
           # Mock pbcopy (Mac)
@@ -165,7 +164,6 @@ jobs:
           # Assertions
           FAILED=0
           
-          # 1. Check for C# Content
           if echo "$OUTPUT" | grep -q "Player.cs"; then
             echo "✅ Found Player.cs"
           else
@@ -173,7 +171,6 @@ jobs:
             FAILED=1
           fi
 
-          # 2. Check for Meta (Should NOT exist)
           if echo "$OUTPUT" | grep -q "Player.cs.meta"; then
             echo "❌ Failed to ignore .meta file"
             FAILED=1
@@ -181,7 +178,6 @@ jobs:
             echo "✅ Correctly ignored .meta file"
           fi
 
-          # 3. Check for Secrets (Should NOT exist)
           if echo "$OUTPUT" | grep -q "SECRET_KEY"; then
             echo "❌ Failed to ignore .env file"
             FAILED=1

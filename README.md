@@ -8,13 +8,15 @@ Perfect for dumping context into ChatGPT, Claude, or DeepSeek.
 
 ## ⚡️ Quick Install
 
-Run this command in your terminal (Mac/Linux):
-
+**Mac / Linux:**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/iafahim/git-copy//main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/iafahim/git-copy/main/install.sh | bash
 ```
 
-*Replaces `git copy` if it exists.*
+**Windows (PowerShell):**
+```powershell
+iwr -useb https://raw.githubusercontent.com/iafahim/git-copy/main/install.ps1 | iex
+```
 
 ## 🚀 Usage
 
@@ -54,8 +56,11 @@ The script generates a prompt-friendly format in your clipboard:
 
 ## 🔧 Manual Install
 
-If you prefer not to use curl:
+**Windows:**
+1. Download `install.ps1`.
+2. Run `.\install.ps1` in PowerShell.
 
+**Mac/Linux:**
 1.  Download `install.sh`.
 2.  `chmod +x install.sh`
 3.  `./install.sh`
@@ -64,3 +69,4 @@ If you prefer not to use curl:
 
 **License:** MIT  
 **Author:** Md. Ishtiaq Ahamed Fahim
+```
