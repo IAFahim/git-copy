@@ -68,7 +68,8 @@ jobs:
             $TestPassed = $false 
           }
 
-          if ($TestPassed) { Write-Host "✔ Windows Tests Passed" -ForegroundColor Green }
+          # FIX: Removed Unicode '✔' character which breaks PS5.1 inline script parsing
+          if ($TestPassed) { Write-Host "[PASS] Windows Tests Passed" -ForegroundColor Green }
 
       - name: Create Report
         if: always()

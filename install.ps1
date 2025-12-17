@@ -164,6 +164,7 @@ elseif ($TotalBytes -lt 1MB) { $HumanSize = "{0:N2} KB" -f ($TotalBytes / 1KB) }
 else { $HumanSize = "{0:N2} MB" -f ($TotalBytes / 1MB) }
 
 # Visual Output
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 Write-Host "✔" -NoNewline -ForegroundColor Green
 Write-Host " Copied: " -NoNewline -ForegroundColor Green
 Write-Host "$Count" -NoNewline -ForegroundColor White
