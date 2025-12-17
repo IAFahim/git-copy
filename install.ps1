@@ -2,10 +2,6 @@
 .SYNOPSIS
     GIT-COPY | v16.1 | Unity Edition (Windows Port)
     Bundles code files into a single Markdown snippet and copies to clipboard.
-
-.DESCRIPTION
-    Scans the current directory (using git or filesystem), filters by extensions 
-    or presets, ignores binaries/secrets, and puts the content in the clipboard.
 #>
 
 param(
@@ -14,13 +10,15 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-# Ensure we output UTF8 so special characters don't break downstream tools
+# Force UTF8 to prevent console crashes on special chars
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
 # --- CONFIG ---
 $MaxSize = 1MB
+# FIX: Define fence as variable to stop parser errors with backticks
+$Fence = '```'
 
-# --- PRESETS (Mapped from original Perl) ---
+# --- PRESETS ---
 $Presets = @{
     "web"     = @("html","htm","css","scss","sass","less","js","jsx","ts","tsx","json","svg","vue","svelte")
     "backend" = @("py","rb","php","pl","go","rs","java","cs","cpp","h","c","hpp","swift","kt","ex","exs","sh")
@@ -35,7 +33,7 @@ $Presets = @{
     "docs"    = @("md","txt","rst","adoc")
 }
 
-# --- IGNORE LIST (Regex) ---
+# --- IGNORE LIST ---
 $IgnoreRegex = "(?i)(package-lock\.json|yarn\.lock|Cargo\.lock|\.DS_Store|Thumbs\.db|\.git\\|\.png$|\.jpg$|\.jpeg$|\.gif$|\.ico$|\.woff2?$|\.pdf$|\.exe$|\.bin$|\.pyc$|\.dll$|\.pdb$|\.min\.js$|\.min\.css$|\.meta$)"
 $SecurityRegex = "(?i)(id_rsa|id_dsa|\.pem|\.key|\.p12|\.env|secrets|credentials)"
 
@@ -55,16 +53,13 @@ $RootPath = Get-Location
 $AllFiles = @()
 
 if (Test-Path ".git") {
-    # Use Git
     try {
         $GitOutput = git ls-files --cached --others --exclude-standard 2>$null
         $AllFiles = $GitOutput | ForEach-Object { $_.Trim() }
     } catch {
-        # Fallback
         $AllFiles = Get-ChildItem -Recurse -File | ForEach-Object { $_.FullName.Substring($RootPath.Path.Length + 1) }
     }
 } else {
-    # Native Recursive Search
     $AllFiles = Get-ChildItem -Recurse -File | ForEach-Object { $_.FullName.Substring($RootPath.Path.Length + 1) }
 }
 
@@ -98,7 +93,6 @@ foreach ($RelPath in $AllFiles) {
 
     if (-not $FileInfo) { continue }
 
-    # Checks
     if ($RelPath -match $IgnoreRegex) { continue }
     if ($RelPath -match $SecurityRegex) { continue }
     
@@ -119,42 +113,43 @@ foreach ($RelPath in $AllFiles) {
         # Build Output
         [void]$ResultBuilder.AppendLine("## File: $RelPath")
         
-        # FIX: Use Single Quotes for ``` to avoid backtick escaping the closing quote
-        [void]$ResultBuilder.AppendLine('```' + $Lang)
+        # FIX: Use variable for code fence to avoid parser confusion
+        [void]$ResultBuilder.AppendLine("$Fence$Lang")
         [void]$ResultBuilder.AppendLine($Content)
-        [void]$ResultBuilder.AppendLine('```') 
+        [void]$ResultBuilder.AppendLine($Fence)
         [void]$ResultBuilder.AppendLine("")
 
         $ProcessedFiles += $RelPath
         $TotalBytes += $FileInfo.Length
         $Count++
     }
-    catch {
-        continue
-    }
+    catch { continue }
 }
 
 # --- 4. FOOTER ---
 [void]$ResultBuilder.AppendLine("")
 [void]$ResultBuilder.AppendLine("_Project Structure:_")
-[void]$ResultBuilder.AppendLine("```text")
+[void]$ResultBuilder.AppendLine("${Fence}text")
 $ProcessedFiles | Sort-Object | ForEach-Object {
     [void]$ResultBuilder.AppendLine($_)
 }
-[void]$ResultBuilder.AppendLine("```")
+[void]$ResultBuilder.AppendLine($Fence)
 
 # --- 5. STATS & CLIPBOARD ---
 $FinalString = $ResultBuilder.ToString()
 Set-Clipboard -Value $FinalString
 
+# Tokens calc
 $Tokens = [math]::Truncate($TotalBytes / 4)
+
+# Human Readable Size
+# FIX: Use Single Quotes here to prevent 'Unexpected token' errors
 $HumanSize = ""
-if ($TotalBytes -lt 1KB) { $HumanSize = "{0} B" -f $TotalBytes }
-elseif ($TotalBytes -lt 1MB) { $HumanSize = "{0:N2} KB" -f ($TotalBytes / 1KB) }
-else { $HumanSize = "{0:N2} MB" -f ($TotalBytes / 1MB) }
+if ($TotalBytes -lt 1KB) { $HumanSize = '{0} B' -f $TotalBytes }
+elseif ($TotalBytes -lt 1MB) { $HumanSize = '{0:N2} KB' -f ($TotalBytes / 1KB) }
+else { $HumanSize = '{0:N2} MB' -f ($TotalBytes / 1MB) }
 
 # Visual Output
-# Use [Console]::OutputEncoding to ensure symbols don't crash legacy consoles
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 Write-Host "[OK]" -NoNewline -ForegroundColor Green
 Write-Host " Copied: " -NoNewline -ForegroundColor Green
