@@ -14,6 +14,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+# Ensure we output UTF8 so special characters don't break downstream tools
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
 # --- CONFIG ---
@@ -35,7 +36,6 @@ $Presets = @{
 }
 
 # --- IGNORE LIST (Regex) ---
-# Added .meta (Unity), .exe, .dll, etc.
 $IgnoreRegex = "(?i)(package-lock\.json|yarn\.lock|Cargo\.lock|\.DS_Store|Thumbs\.db|\.git\\|\.png$|\.jpg$|\.jpeg$|\.gif$|\.ico$|\.woff2?$|\.pdf$|\.exe$|\.bin$|\.pyc$|\.dll$|\.pdb$|\.min\.js$|\.min\.css$|\.meta$)"
 $SecurityRegex = "(?i)(id_rsa|id_dsa|\.pem|\.key|\.p12|\.env|secrets|credentials)"
 
@@ -55,12 +55,12 @@ $RootPath = Get-Location
 $AllFiles = @()
 
 if (Test-Path ".git") {
-    # Use Git (Standard listing, no -z for easier PS handling)
+    # Use Git
     try {
         $GitOutput = git ls-files --cached --others --exclude-standard 2>$null
         $AllFiles = $GitOutput | ForEach-Object { $_.Trim() }
     } catch {
-        # Fallback if git fails
+        # Fallback
         $AllFiles = Get-ChildItem -Recurse -File | ForEach-Object { $_.FullName.Substring($RootPath.Path.Length + 1) }
     }
 } else {
@@ -79,7 +79,6 @@ if ($ArgsList.Count -gt 0) {
         if ($Presets.ContainsKey($arg)) {
             $FilterExtensions += $Presets[$arg]
         } else {
-            # remove leading dot if present
             $FilterExtensions += $arg -replace "^\.", ""
         }
     }
@@ -99,24 +98,17 @@ foreach ($RelPath in $AllFiles) {
 
     if (-not $FileInfo) { continue }
 
-    # Basic Checks
+    # Checks
     if ($RelPath -match $IgnoreRegex) { continue }
     if ($RelPath -match $SecurityRegex) { continue }
     
-    # Extension Filter
     $Ext = $FileInfo.Extension -replace "^\.", ""
     if ($FilterActive) {
         if ($FilterExtensions -notcontains $Ext) { continue }
     }
 
-    # Size Check
     if ($FileInfo.Length -gt $MaxSize -or $FileInfo.Length -eq 0) { continue }
 
-    # Binary Check (Simple heuristic)
-    # We'll rely on extension ignores mostly, but lets read first few bytes to be sure
-    # skipping this strictly for speed in PS, relying on IgnoreRegex above
-
-    # Determine Language for Markdown
     $Lang = $Ext
     if ($LangMap.ContainsKey($Lang.ToLower())) { $Lang = $LangMap[$Lang.ToLower()] }
 
@@ -126,9 +118,11 @@ foreach ($RelPath in $AllFiles) {
         
         # Build Output
         [void]$ResultBuilder.AppendLine("## File: $RelPath")
-        [void]$ResultBuilder.AppendLine("```$Lang")
+        
+        # FIX: Use Single Quotes for ``` to avoid backtick escaping the closing quote
+        [void]$ResultBuilder.AppendLine('```' + $Lang)
         [void]$ResultBuilder.AppendLine($Content)
-        [void]$ResultBuilder.AppendLine("```")
+        [void]$ResultBuilder.AppendLine('```') 
         [void]$ResultBuilder.AppendLine("")
 
         $ProcessedFiles += $RelPath
@@ -136,12 +130,11 @@ foreach ($RelPath in $AllFiles) {
         $Count++
     }
     catch {
-        # Skip file if read error (likely binary or locked)
         continue
     }
 }
 
-# --- 4. FOOTER (Structure) ---
+# --- 4. FOOTER ---
 [void]$ResultBuilder.AppendLine("")
 [void]$ResultBuilder.AppendLine("_Project Structure:_")
 [void]$ResultBuilder.AppendLine("```text")
@@ -154,19 +147,16 @@ $ProcessedFiles | Sort-Object | ForEach-Object {
 $FinalString = $ResultBuilder.ToString()
 Set-Clipboard -Value $FinalString
 
-# Tokens calc (approx 4 chars per token)
 $Tokens = [math]::Truncate($TotalBytes / 4)
-
-# Human Readable Size
 $HumanSize = ""
 if ($TotalBytes -lt 1KB) { $HumanSize = "{0} B" -f $TotalBytes }
 elseif ($TotalBytes -lt 1MB) { $HumanSize = "{0:N2} KB" -f ($TotalBytes / 1KB) }
 else { $HumanSize = "{0:N2} MB" -f ($TotalBytes / 1MB) }
 
 # Visual Output
-# Set encoding to UTF8 so the checkmark prints correctly on Windows Consoles
+# Use [Console]::OutputEncoding to ensure symbols don't crash legacy consoles
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-Write-Host "✔" -NoNewline -ForegroundColor Green
+Write-Host "[OK]" -NoNewline -ForegroundColor Green
 Write-Host " Copied: " -NoNewline -ForegroundColor Green
 Write-Host "$Count" -NoNewline -ForegroundColor White
 Write-Host " files | Size: " -NoNewline -ForegroundColor Green

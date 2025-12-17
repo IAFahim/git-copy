@@ -38,7 +38,6 @@ jobs:
           }
 
           # 2. Run the script against TestProject
-          # FIX: The file in your repo is named 'install.ps1', not 'git-copy.ps1'
           cd TestProject
           & ..\install.ps1
 
@@ -75,7 +74,6 @@ jobs:
             $TestPassed = $false 
           }
 
-          # FIX: Use '[PASS]' instead of Unicode '✔' to prevent PowerShell 5.1 parsing errors in YAML
           if ($TestPassed) { 
             Write-Host "[PASS] Windows Tests Passed" -ForegroundColor Green 
           } else {
