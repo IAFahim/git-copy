@@ -1,0 +1,201 @@
+name: Test Git-Copy (Unity Edition)
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+permissions:
+  contents: read
+
+jobs:
+  # ------------------------------------------------------------------
+  # TEST WINDOWS (PowerShell Version)
+  # ------------------------------------------------------------------
+  test-windows:
+    name: Windows (PowerShell)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Test Fixtures (Unity Style)
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force -Path "TestProject"
+          "public class PlayerController : MonoBehaviour {}" | Set-Content "TestProject/Player.cs"
+          "guid: 12345" | Set-Content "TestProject/Player.cs.meta"
+          "SECRET_KEY=123" | Set-Content "TestProject/.env"
+          "node_modules stuff" | Set-Content "TestProject/package-lock.json"
+
+      - name: Run Tool & Verify
+        shell: powershell
+        run: |
+          # 1. Mock Set-Clipboard to capture output to a file instead of system clipboard
+          function Set-Clipboard {
+              param([Parameter(ValueFromPipeline=$true)]$Value)
+              $Value | Set-Content "clipboard_output.md"
+          }
+
+          # 2. Run the script against TestProject
+          cd TestProject
+          & ..\git-copy.ps1
+
+          # 3. Read Output
+          $Output = Get-Content "clipboard_output.md" -Raw
+          Write-Host "--- CAPTURED OUTPUT ---"
+          Write-Host $Output
+          Write-Host "-----------------------"
+
+          # 4. Assertions
+          $TestPassed = $true
+          
+          # Check if Unity C# file is present
+          if ($Output -notmatch "Player.cs") { 
+            Write-Error "FAIL: Player.cs missing from output."
+            $TestPassed = $false 
+          }
+          
+          # Check if .meta file is IGNORED
+          if ($Output -match "Player.cs.meta") { 
+            Write-Error "FAIL: .meta file was NOT ignored."
+            $TestPassed = $false 
+          }
+
+          # Check if .env is IGNORED
+          if ($Output -match "SECRET_KEY") { 
+            Write-Error "FAIL: Secrets (.env) were leaking."
+            $TestPassed = $false 
+          }
+
+          if ($TestPassed) { Write-Host "✔ Windows Tests Passed" -ForegroundColor Green }
+
+      - name: Create Report
+        if: always()
+        run: |
+          echo "## 🪟 Windows Test Report" >> $env:GITHUB_STEP_SUMMARY
+          if (Test-Path "TestProject/clipboard_output.md") {
+             echo "✅ Execution Successful" >> $env:GITHUB_STEP_SUMMARY
+          } else {
+             echo "❌ Execution Failed" >> $env:GITHUB_STEP_SUMMARY
+          }
+
+  # ------------------------------------------------------------------
+  # TEST UNIX (Bash Version - Mac & Linux)
+  # ------------------------------------------------------------------
+  test-unix:
+    name: ${{ matrix.os }} (Bash)
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Test Fixtures (Unity Style)
+        run: |
+          mkdir TestProject
+          cd TestProject
+          echo "public class PlayerController : MonoBehaviour {}" > Player.cs
+          echo "guid: 12345" > Player.cs.meta
+          echo "SECRET_KEY=123" > .env
+          echo "garbage" > package-lock.json
+          # Initialize git to test git-aware features
+          git init
+          git config --global user.email "you@example.com"
+          git config --global user.name "Your Name"
+          git add .
+
+      - name: Install & Mock Clipboard
+        run: |
+          # The bash script installs to /usr/local/bin/git-copy
+          # We run the installer script first
+          chmod +x git-copy.sh
+          sudo ./git-copy.sh
+
+          # MOCK CLIPBOARD TOOLS
+          # We create fake pbcopy/xclip that write to a file called 'mock_clipboard.txt'
+          mkdir -p $HOME/bin
+          
+          # Mock pbcopy (Mac)
+          echo '#!/bin/bash' > $HOME/bin/pbcopy
+          echo 'cat > $HOME/mock_clipboard.txt' >> $HOME/bin/pbcopy
+          chmod +x $HOME/bin/pbcopy
+          
+          # Mock xclip (Linux)
+          echo '#!/bin/bash' > $HOME/bin/xclip
+          echo 'cat > $HOME/mock_clipboard.txt' >> $HOME/bin/xclip
+          chmod +x $HOME/bin/xclip
+
+          # Mock wl-copy (Wayland Linux)
+          echo '#!/bin/bash' > $HOME/bin/wl-copy
+          echo 'cat > $HOME/mock_clipboard.txt' >> $HOME/bin/wl-copy
+          chmod +x $HOME/bin/wl-copy
+
+      - name: Run Tool & Verify
+        run: |
+          # Add mocks to path
+          export PATH="$HOME/bin:$PATH"
+          
+          cd TestProject
+          
+          # Run the installed tool
+          /usr/local/bin/git-copy unity
+
+          echo "--- CHECKING OUTPUT ---"
+          if [ ! -f "$HOME/mock_clipboard.txt" ]; then
+            echo "❌ Fatal: No output sent to clipboard mock."
+            exit 1
+          fi
+          
+          OUTPUT=$(cat $HOME/mock_clipboard.txt)
+          echo "$OUTPUT"
+
+          # Assertions
+          FAILED=0
+          
+          # 1. Check for C# Content
+          if echo "$OUTPUT" | grep -q "Player.cs"; then
+            echo "✅ Found Player.cs"
+          else
+            echo "❌ Missing Player.cs"
+            FAILED=1
+          fi
+
+          # 2. Check for Meta (Should NOT exist)
+          if echo "$OUTPUT" | grep -q "Player.cs.meta"; then
+            echo "❌ Failed to ignore .meta file"
+            FAILED=1
+          else
+            echo "✅ Correctly ignored .meta file"
+          fi
+
+          # 3. Check for Secrets (Should NOT exist)
+          if echo "$OUTPUT" | grep -q "SECRET_KEY"; then
+            echo "❌ Failed to ignore .env file"
+            FAILED=1
+          else
+            echo "✅ Correctly ignored .env file"
+          fi
+
+          if [ $FAILED -eq 1 ]; then exit 1; fi
+
+      - name: Create Report
+        if: always()
+        run: |
+          OS_ICON="🐧"
+          if [[ "${{ matrix.os }}" == "macos-latest" ]]; then OS_ICON="🍎"; fi
+          
+          echo "## $OS_ICON ${{ matrix.os }} Test Report" >> $GITHUB_STEP_SUMMARY
+          if [ -f "$HOME/mock_clipboard.txt" ]; then
+             echo "✅ Clipboard Capture Successful" >> $GITHUB_STEP_SUMMARY
+             echo "<details><summary>View Output Snippet</summary>" >> $GITHUB_STEP_SUMMARY
+             echo "" >> $GITHUB_STEP_SUMMARY
+             echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+             head -n 10 $HOME/mock_clipboard.txt >> $GITHUB_STEP_SUMMARY
+             echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+             echo "</details>" >> $GITHUB_STEP_SUMMARY
+          else
+             echo "❌ Execution Failed" >> $GITHUB_STEP_SUMMARY
+          fi
