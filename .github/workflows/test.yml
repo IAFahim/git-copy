@@ -111,8 +111,8 @@ jobs:
         run: |
           # The bash script installs to /usr/local/bin/git-copy
           # We run the installer script first
-          chmod +x git-copy.sh
-          sudo ./git-copy.sh
+          chmod +x install.sh
+          sudo ./install.sh
 
           # MOCK CLIPBOARD TOOLS
           # We create fake pbcopy/xclip that write to a file called 'mock_clipboard.txt'
