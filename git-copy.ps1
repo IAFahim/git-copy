@@ -1,17 +1,66 @@
 <#
 .SYNOPSIS
-    GIT-COPY | v16.1 | Unity Edition (Windows Port)
+    GIT-COPY | v16.2 | Cross-Platform Edition (Windows Port)
     Bundles code files into a single Markdown snippet and copies to clipboard.
 #>
 
 param(
     [Parameter(ValueFromRemainingArguments = $true)]
-    [string[]]$ArgsList
+    [string[]]$ArgsList,
+    
+    [Alias("exclude")]
+    [string[]]$ExcludePaths = @(),
+    
+    [switch]$Help
 )
 
 $ErrorActionPreference = "Stop"
 # Force UTF8 to prevent console crashes on special chars
 $OutputEncoding = [System.Text.Encoding]::UTF8
+
+if ($Help -or $ArgsList -contains "--help" -or $ArgsList -contains "-h") {
+    Write-Host @"
+
+GIT-COPY | v16.2 | Cross-Platform Edition
+
+USAGE:
+    git copy [OPTIONS] [FILTERS] [EXCLUDES]
+
+OPTIONS:
+    --help, -h          Show this help message
+
+FILTERS:
+    <extension>         Copy only files with specified extensions (e.g., js py)
+    <preset>            Use predefined filter preset
+
+PRESETS:
+    web                 html, css, js, ts, jsx, tsx, json, svg, vue, svelte
+    backend             py, rb, php, go, rs, java, cs, cpp, swift, kt
+    dotnet              cs, razor, csproj, json, http, xaml
+    unity               cs, shader, glsl, asmdef, uss, uxml, json, yaml
+    java                java, kt, scala
+    cpp                 c, h, cpp, hpp, rs, go, swift
+    script              py, rb, php, lua, sh, ps1
+    data                sql, xml, json, yaml, toml, md, csv
+    config              env, conf, ini, Dockerfile, Makefile
+    docs                md, txt, rst, adoc
+
+EXCLUDES:
+    -<path>             Exclude folder or path (e.g., -node_modules -tests)
+    --exclude <path>    Alternative exclude syntax
+
+EXAMPLES:
+    git copy                              Copy all tracked files
+    git copy js                           Copy only .js files
+    git copy web                          Copy all web-related files
+    git copy -node_modules                Exclude node_modules folder
+    git copy js -tests                    Copy .js files, exclude tests folder
+    git copy web -dist -build             Copy web files, exclude build folders
+    git copy --exclude src/legacy         Exclude specific path
+
+"@ -ForegroundColor Cyan
+    exit 0
+}
 
 # --- CONFIG ---
 $MaxSize = 1MB
@@ -66,10 +115,23 @@ if (Test-Path ".git") {
 # --- 2. FILTER ARGUMENTS ---
 $FilterExtensions = @()
 $FilterActive = $false
+$ExcludeActive = $ExcludePaths.Count -gt 0
 
 if ($ArgsList.Count -gt 0) {
     $FilterActive = $true
     foreach ($arg in $ArgsList) {
+        # Check for --exclude flag
+        if ($arg -eq "--exclude" -or $arg -eq "-exclude") {
+            continue
+        }
+        # Check if it's an exclude path (starts with -)
+        if ($arg -match "^-") {
+            $path = $arg.TrimStart('-')
+            $ExcludePaths += $path
+            $ExcludeActive = $true
+            continue
+        }
+        
         $arg = $arg.ToLower()
         if ($Presets.ContainsKey($arg)) {
             $FilterExtensions += $Presets[$arg]
@@ -77,6 +139,14 @@ if ($ArgsList.Count -gt 0) {
             $FilterExtensions += $arg -replace "^\.", ""
         }
     }
+}
+
+# Normalize exclude paths
+$NormalizedExcludes = @()
+foreach ($path in $ExcludePaths) {
+    $normalized = $path -replace "/", "\"
+    $normalized = $normalized.TrimStart('.\')
+    $NormalizedExcludes += $normalized
 }
 
 # --- 3. PROCESSING ENGINE ---
@@ -95,6 +165,18 @@ foreach ($RelPath in $AllFiles) {
 
     if ($RelPath -match $IgnoreRegex) { continue }
     if ($RelPath -match $SecurityRegex) { continue }
+    
+    # Check exclude paths
+    if ($ExcludeActive) {
+        $shouldExclude = $false
+        foreach ($excludePath in $NormalizedExcludes) {
+            if ($RelPath -like "$excludePath*" -or $RelPath -like "*\$excludePath\*" -or $RelPath -eq $excludePath) {
+                $shouldExclude = $true
+                break
+            }
+        }
+        if ($shouldExclude) { continue }
+    }
     
     $Ext = $FileInfo.Extension -replace "^\.", ""
     if ($FilterActive) {

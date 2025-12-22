@@ -13,7 +13,7 @@ PURPLE='\033[0;35m'
 GREEN='\033[0;32m'
 NC='\033[0m'
 
-echo -e "${PURPLE}>> INSTALLING GIT-COPY v16.1 (UNITY EDITION) <<${NC}"
+echo -e "${PURPLE}>> INSTALLING GIT-COPY v16.2 (CROSS-PLATFORM EDITION) <<${NC}"
 
 # Permissions Check
 CMD_PREFIX=""
@@ -26,16 +26,100 @@ cat > "$TMP_PAYLOAD" << 'EOF'
 #!/usr/bin/env bash
 
 # ------------------------------------------------------------------------------
-# ⚡ GIT-COPY | v16.1 | Unity Edition
+# ⚡ GIT-COPY | v16.2 | Cross-Platform Edition
 # ------------------------------------------------------------------------------
 set -o nounset
 set -o pipefail
 
+# --- HELP ---
+show_help() {
+    cat << 'HELP_EOF'
+
+GIT-COPY | v16.2 | Cross-Platform Edition
+
+USAGE:
+    git copy [OPTIONS] [FILTERS] [EXCLUDES]
+
+OPTIONS:
+    --help, -h          Show this help message
+
+FILTERS:
+    <extension>         Copy only files with specified extensions (e.g., js py)
+    <preset>            Use predefined filter preset
+
+PRESETS:
+    web                 html, css, js, ts, jsx, tsx, json, svg, vue, svelte
+    backend             py, rb, php, go, rs, java, cs, cpp, swift, kt
+    dotnet              cs, razor, csproj, json, http, xaml
+    unity               cs, shader, glsl, asmdef, uss, uxml, json, yaml
+    java                java, kt, scala
+    cpp                 c, h, cpp, hpp, rs, go, swift
+    script              py, rb, php, lua, sh, ps1
+    data                sql, xml, json, yaml, toml, md, csv
+    config              env, conf, ini, Dockerfile, Makefile
+    docs                md, txt, rst, adoc
+
+EXCLUDES:
+    -<path>             Exclude folder or path (e.g., -node_modules -tests)
+    --exclude <path>    Alternative exclude syntax
+
+EXAMPLES:
+    git copy                              Copy all tracked files
+    git copy js                           Copy only .js files
+    git copy web                          Copy all web-related files
+    git copy -node_modules                Exclude node_modules folder
+    git copy js -tests                    Copy .js files, exclude tests folder
+    git copy web -dist -build             Copy web files, exclude build folders
+    git copy --exclude src/legacy         Exclude specific path
+
+HELP_EOF
+    exit 0
+}
+
+# Check for help flag
+for arg in "$@"; do
+    if [[ "$arg" == "--help" ]] || [[ "$arg" == "-h" ]]; then
+        show_help
+    fi
+done
+
 # --- CONFIG ---
 MAX_SIZE=1048576
 
+# Parse arguments - separate exclude paths from filter args
+FILTER_ARGS=""
+EXCLUDE_PATHS=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --exclude)
+            shift
+            if [[ $# -gt 0 ]]; then
+                EXCLUDE_PATHS="${EXCLUDE_PATHS}${EXCLUDE_PATHS:+|}$1"
+                shift
+            fi
+            ;;
+        -*)
+            # Check if it looks like a path (contains / or is a valid folder name)
+            if [[ "$1" =~ ^-[a-zA-Z0-9_/.-]+$ ]]; then
+                # Exclude path syntax: -path/to/exclude
+                EXCLUDE_PATHS="${EXCLUDE_PATHS}${EXCLUDE_PATHS:+|}${1#-}"
+                shift
+            else
+                # It's a flag we don't recognize, skip it
+                shift
+            fi
+            ;;
+        *)
+            FILTER_ARGS="$FILTER_ARGS $1"
+            shift
+            ;;
+    esac
+done
+
 # Pass arguments to Perl via ENV
-export GIT_COPY_ARGS="$*"
+export GIT_COPY_ARGS="$FILTER_ARGS"
+export GIT_COPY_EXCLUDE="$EXCLUDE_PATHS"
 
 # --- EXECUTION ---
 TMP_DIR=$(mktemp -d 2>/dev/null || mktemp -d -t 'git-copy')
@@ -90,6 +174,21 @@ echo -e "\033[0;36mProcessing...\033[0m" >&2
             $filter_re = qr/(\.($joined)$)|(^($joined)$)/i;
         }
 
+        # --- EXCLUDE PATHS ---
+        $exclude_paths = $ENV{GIT_COPY_EXCLUDE};
+        $exclude_active = 0;
+        @exclude_list = ();
+        
+        if ($exclude_paths ne "") {
+            $exclude_active = 1;
+            @exclude_list = split(/\|/, $exclude_paths);
+            # Normalize paths - remove leading ./ and trailing /
+            for (@exclude_list) {
+                s{^\.?/+}{};
+                s{/+$}{};
+            }
+        }
+
         # Regex
         # Added \.meta$ to the end to drop Unity meta files
         $ignore_re = qr/package-lock\.json|yarn\.lock|Cargo\.lock|\.DS_Store|Thumbs\.db|\.git\/|\.png$|\.jpg$|\.jpeg$|\.gif$|\.ico$|\.woff2?$|\.pdf$|\.exe$|\.bin$|\.pyc$|\.dll$|\.pdb$|\.min\.js$|\.min\.css$|\.meta$/i;
@@ -110,6 +209,19 @@ echo -e "\033[0;36mProcessing...\033[0m" >&2
     # Filter
     next if ($f =~ $ignore_re);
     next unless (-f $f);
+    
+    # Check exclude paths
+    if ($exclude_active) {
+        $should_exclude = 0;
+        foreach $exclude (@exclude_list) {
+            # Check if file path starts with exclude path
+            if ($f =~ /^\Q$exclude\E(\/|$)/) {
+                $should_exclude = 1;
+                last;
+            }
+        }
+        next if $should_exclude;
+    }
     
     if ($filter_active) {
         $base = $f; $base =~ s{.*/}{}; 
@@ -190,8 +302,8 @@ EOF
 $CMD_PREFIX install -m 755 "$TMP_PAYLOAD" "$TARGET_PATH"
 rm -f "$TMP_PAYLOAD"
 
-if [ -x "$TARGET_PATH" ]; then
-    echo -e "${GREEN}✔ Installed v16.1 (Unity Edition).${NC}"
+if (-x "$TARGET_PATH"); then
+    echo -e "${GREEN}✔ Installed v16.2 (Cross-Platform Edition).${NC}"
 else
     echo -e "${RED}✘ Failed.${NC}"
 fi
