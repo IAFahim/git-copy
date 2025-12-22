@@ -102,7 +102,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         -*)
             # Check if it looks like a path (contains / or is a valid folder name)
-            if [[ "$1" =~ ^-[a-zA-Z0-9_/.-]+$ ]]; then
+            if [[ "$1" =~ ^-[a-zA-Z0-9_/.\ -]+$ ]]; then
                 # Exclude path syntax: -path/to/exclude
                 EXCLUDE_PATHS="${EXCLUDE_PATHS}${EXCLUDE_PATHS:+|}${1#-}"
                 shift
