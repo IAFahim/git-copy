@@ -47,6 +47,7 @@ PRESETS:
 
 EXCLUDES:
     -<path>             Exclude folder or path (e.g., -node_modules -tests)
+                        Note: Use quotes for paths with spaces (e.g., -"my folder")
     --exclude <path>    Alternative exclude syntax
 
 EXAMPLES:

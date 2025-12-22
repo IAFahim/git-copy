@@ -40,6 +40,9 @@ git copy -node_modules
 git copy -tests
 git copy -build
 
+# Paths with spaces (use quotes)
+git copy -"folder with spaces"
+
 # Multiple exclusions
 git copy -node_modules -tests -docs
 

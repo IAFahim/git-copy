@@ -214,6 +214,25 @@ else
     exit 1
 fi
 
+# Test 9: Exclude folder with spaces
+echo -n "[TEST 9] Exclude folder with spaces..."
+mkdir -p "folder with spaces"
+echo "content" > "folder with spaces/file.txt"
+git add "folder with spaces"
+git commit -q -m "Add folder with spaces"
+"$EMBEDDED_SCRIPT" -"folder with spaces" 2>&1 | grep -v "Processing..." >/dev/null
+if [ -f "$HOME/mock_clipboard.txt" ]; then
+    if ! grep -q "folder with spaces/file.txt" "$HOME/mock_clipboard.txt" 2>/dev/null; then
+        echo -e " ${GREEN}PASS${NC}"
+    else
+        echo -e " ${RED}FAIL${NC}"
+        exit 1
+    fi
+else
+    echo -e " ${RED}FAIL - No output${NC}"
+    exit 1
+fi
+
 rm -f "$EMBEDDED_SCRIPT"
 
 echo -e "\n${GREEN}=== ALL TESTS PASSED ===${NC}\n"

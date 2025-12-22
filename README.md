@@ -58,6 +58,8 @@ You can exclude specific folders or paths from being copied:
 1. **Dash prefix:** `-path/to/exclude`
 2. **Flag syntax:** `--exclude path/to/exclude`
 
+> **Note:** For paths with spaces, wrap the argument in quotes: `git copy -"folder with spaces"`
+
 ### Examples:
 
 ```bash

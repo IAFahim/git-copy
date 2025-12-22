@@ -62,6 +62,7 @@ PRESETS:
 
 EXCLUDES:
     -<path>             Exclude folder or path (e.g., -node_modules -tests)
+                        Note: Use quotes for paths with spaces (e.g., -"my folder")
     --exclude <path>    Alternative exclude syntax
 
 EXAMPLES:
@@ -102,7 +103,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         -*)
             # Check if it looks like a path (contains / or is a valid folder name)
-            if [[ "$1" =~ ^-[a-zA-Z0-9_/.\ -]+$ ]]; then
+            if [[ "$1" =~ ^-.+$ ]]; then
                 # Exclude path syntax: -path/to/exclude
                 EXCLUDE_PATHS="${EXCLUDE_PATHS}${EXCLUDE_PATHS:+|}${1#-}"
                 shift
