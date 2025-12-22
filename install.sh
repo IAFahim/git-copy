@@ -11,6 +11,7 @@ TARGET_PATH="$INSTALL_DIR/$TOOL_NAME"
 CYAN='\033[0;36m'
 PURPLE='\033[0;35m'
 GREEN='\033[0;32m'
+RED='\033[0;31m'
 NC='\033[0m'
 
 echo -e "${PURPLE}>> INSTALLING GIT-COPY v16.2 (CROSS-PLATFORM EDITION) <<${NC}"
@@ -302,7 +303,7 @@ EOF
 $CMD_PREFIX install -m 755 "$TMP_PAYLOAD" "$TARGET_PATH"
 rm -f "$TMP_PAYLOAD"
 
-if (-x "$TARGET_PATH"); then
+if [ -x "$TARGET_PATH" ]; then
     echo -e "${GREEN}✔ Installed v16.2 (Cross-Platform Edition).${NC}"
 else
     echo -e "${RED}✘ Failed.${NC}"
