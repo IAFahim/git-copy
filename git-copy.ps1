@@ -1,86 +1,41 @@
 <#
 .SYNOPSIS
-    GIT-COPY | v16.2 | Cross-Platform Edition (Windows Port)
+    GIT-COPY | v17.0 | Professional Edition
     Bundles code files into a single Markdown snippet and copies to clipboard.
+
+.DESCRIPTION
+    A high-performance, cross-platform tool to aggregate code context for LLMs.
+    Respects .gitignore, handles binary exclusion, and secures secrets automatically.
+
+.EXAMPLE
+    git copy web -node_modules
+    Copies all web assets (html/css/js) but excludes the node_modules folder.
 #>
 
+[CmdletBinding()]
 param(
     [Parameter(ValueFromRemainingArguments = $true)]
-    [string[]]$ArgsList,
+    [string[]]$Arguments,
 
+    [Alias("h")]
     [switch]$Help
 )
 
+# -----------------------------------------------------------------------------
+# CONFIGURATION & CONSTANTS
+# -----------------------------------------------------------------------------
+Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
-# Force UTF8 to prevent console crashes on special chars
+
+# Force UTF-8 Output to prevent crashes with special characters/emojis
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
-# Initialize variables that were previously parameters
-$ExcludePaths = @()
-$ExcludePatterns = @()
+$MAX_SIZE = 1MB
+$FENCE = '```' # Avoids parser issues with backticks
 
-if ($Help -or $ArgsList -contains "--help" -or $ArgsList -contains "-h") {
-    Write-Host @"
-
-GIT-COPY | v16.2 | Cross-Platform Edition
-
-USAGE:
-    git copy [OPTIONS] [FILTERS] [EXCLUDES]
-
-OPTIONS:
-    --help, -h          Show this help message
-
-FILTERS:
-    <extension>         Copy only files with specified extensions (e.g., js py)
-    <preset>            Use predefined filter preset
-
-PRESETS:
-    web                 html, css, js, ts, jsx, tsx, json, svg, vue, svelte
-    backend             py, rb, php, go, rs, java, cs, cpp, swift, kt
-    dotnet              cs, razor, csproj, json, http, xaml
-    unity               cs, shader, glsl, asmdef, uss, uxml, json, yaml
-    java                java, kt, scala
-    cpp                 c, h, cpp, hpp, rs, go, swift
-    script              py, rb, php, lua, sh, ps1
-    data                sql, xml, json, yaml, toml, md, csv
-    config              env, conf, ini, Dockerfile, Makefile
-    docs                md, txt, rst, adoc
-
-EXCLUDES:
-    -<path>             Exclude folder or path (e.g., -node_modules -tests)
-                        Note: Use quotes for paths with spaces (e.g., -"my folder")
-    --exclude <path>    Alternative exclude syntax
-
-PATTERN EXCLUDES:
-    --<pattern>         Exclude folders/files matching wildcard pattern
-                        Examples: --*.Tests --test* --*.tmp
-                        Matches: MyApp.Tests/, test.cs, test_backup/, file.tmp
-    -.extension         Exclude files by extension (e.g., -.md -.log)
-                        Note: Use quotes for patterns with spaces (e.g., --"test *")
-
-EXAMPLES:
-    git copy                              Copy all tracked files
-    git copy js                           Copy only .js files
-    git copy web                          Copy all web-related files
-    git copy -node_modules                Exclude node_modules folder
-    git copy js -tests                    Copy .js files, exclude tests folder
-    git copy web -dist -build             Copy web files, exclude build folders
-    git copy --exclude src/legacy         Exclude specific path
-    git copy --*.Tests                    Exclude all .Tests folders/files
-    git copy -.md                         Exclude all markdown files
-    git copy --test* -*.tmp               Exclude test* folders and *.tmp files
-
-"@ -ForegroundColor Cyan
-    exit 0
-}
-
-# --- CONFIG ---
-$MaxSize = 1MB
-# FIX: Define fence as variable to stop parser errors with backticks
-$Fence = '```'
-
-# --- PRESETS ---
-$Presets = @{
+# Preset Definitions
+$PRESETS = @{
     "web"     = @("html","htm","css","scss","sass","less","js","jsx","ts","tsx","json","svg","vue","svelte")
     "backend" = @("py","rb","php","pl","go","rs","java","cs","cpp","h","c","hpp","swift","kt","ex","exs","sh")
     "dotnet"  = @("cs","razor","csproj","json","http","xaml")
@@ -94,231 +49,237 @@ $Presets = @{
     "docs"    = @("md","txt","rst","adoc")
 }
 
-# --- IGNORE LIST ---
-$IgnoreRegex = "(?i)(package-lock\.json|yarn\.lock|Cargo\.lock|\.DS_Store|Thumbs\.db|\.git\\|\.png$|\.jpg$|\.jpeg$|\.gif$|\.ico$|\.woff2?$|\.pdf$|\.exe$|\.bin$|\.pyc$|\.dll$|\.pdb$|\.min\.js$|\.min\.css$|\.meta$)"
-$SecurityRegex = "(?i)(id_rsa|id_dsa|\.pem|\.key|\.p12|\.env|secrets|credentials)"
-
-# --- LANGUAGE MAP ---
-$LangMap = @{
+# Language Mapping for Syntax Highlighting
+$LANG_MAP = @{
     "js" = "javascript"; "ts" = "typescript"; "py" = "python";
     "cs" = "csharp"; "sh" = "bash"; "md" = "markdown";
     "h" = "c"; "hpp" = "cpp"; "razor" = "html"; "vue" = "html";
-    "shader" = "glsl"; "cginc" = "glsl"; "hlsl" = "glsl"; "uss" = "css"; "uxml" = "xml";
-    "ps1" = "powershell"
+    "shader" = "glsl"; "cginc" = "glsl"; "hlsl" = "glsl"; 
+    "uss" = "css"; "uxml" = "xml"; "ps1" = "powershell"
+}
+
+# Regex Compilations (Performance Optimization)
+$RegexOptions = [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
+$IgnoreRegex   = [regex]::new("(package-lock\.json|yarn\.lock|Cargo\.lock|\.DS_Store|Thumbs\.db|\.git/|\.png$|\.jpg$|\.jpeg$|\.gif$|\.ico$|\.woff2?$|\.pdf$|\.exe$|\.bin$|\.pyc$|\.dll$|\.pdb$|\.min\.js$|\.min\.css$|\.meta$)", $RegexOptions)
+$SecurityRegex = [regex]::new("(id_rsa|id_dsa|\.pem|\.key|\.p12|\.env|secrets|credentials)", $RegexOptions)
+
+# -----------------------------------------------------------------------------
+# HELPER FUNCTIONS
+# -----------------------------------------------------------------------------
+function Show-Help {
+    Write-Host @"
+GIT-COPY | v17.0 | Professional Edition
+
+USAGE:
+    git copy [OPTIONS] [FILTERS] [EXCLUDES]
+
+EXAMPLES:
+    git copy                      # Copy all tracked files
+    git copy js                   # Copy only .js files
+    git copy web -node_modules    # Web files, excluding node_modules
+    git copy --*.Tests            # Exclude files/folders matching *.Tests
+    git copy -.md                 # Exclude .md extensions
+"@ -ForegroundColor Cyan
+    exit 0
+}
+
+function Convert-GlobToRegex {
+    param([string]$Pattern)
+    # Escape special regex chars, then convert wildcards back to regex syntax
+    $safe = [regex]::Escape($Pattern)
+    $safe = $safe -replace "\\\*", ".*" -replace "\\\?", "."
+    return "^.*$safe.*$" # Loose match similar to original script logic
+}
+
+# -----------------------------------------------------------------------------
+# MAIN EXECUTION FLOW
+# -----------------------------------------------------------------------------
+
+# 0. Handle Help
+if ($Help -or ($Arguments -contains "--help") -or ($Arguments -contains "-h")) {
+    Show-Help
 }
 
 Write-Host "Processing..." -ForegroundColor Cyan
 
-# --- 1. DISCOVERY ---
-$RootPath = Get-Location
-$AllFiles = @()
+# 1. PARSE ARGUMENTS
+# Using Generic Lists for performance (Arrays are slow in PS for add operations)
+$TargetExtensions = [System.Collections.Generic.List[string]]::new()
+$ExcludePaths     = [System.Collections.Generic.List[string]]::new()
+$ExcludePatterns  = [System.Collections.Generic.List[string]]::new()
+
+$IsFilterActive = $false
+$SkipNext = $false
+
+for ($i = 0; $i -lt $Arguments.Count; $i++) {
+    if ($SkipNext) { $SkipNext = $false; continue }
+    
+    $arg = $Arguments[$i]
+    
+    switch -Regex ($arg) {
+        # explicit --exclude flag
+        "^--exclude$|^-exclude$" {
+            if ($i + 1 -lt $Arguments.Count) {
+                $ExcludePaths.Add($Arguments[$i+1].TrimStart("-"))
+                $SkipNext = $true
+            }
+        }
+        # Pattern exclusion: --*.Tests
+        "^--(?!exclude)(.+)" {
+            $Matches[1] | ForEach-Object { $ExcludePatterns.Add((Convert-GlobToRegex $_)) }
+        }
+        # Extension exclusion: -.md
+        "^-\.(.+)" {
+            $ExcludePatterns.Add((Convert-GlobToRegex "*.$($Matches[1])"))
+        }
+        # Path exclusion: -node_modules
+        "^-(.+)" {
+            $ExcludePaths.Add($Matches[1])
+        }
+        # Presets or Extensions
+        default {
+            $val = $arg.ToLower().TrimStart(".")
+            if ($PRESETS.ContainsKey($val)) {
+                $PRESETS[$val] | ForEach-Object { $TargetExtensions.Add($_) }
+            } else {
+                $TargetExtensions.Add($val)
+            }
+            $IsFilterActive = $true
+        }
+    }
+}
+
+# Normalize Exclude Paths (Forward slashes, no leading ./)
+$NormalizedExcludes = [System.Collections.Generic.List[string]]::new()
+foreach ($path in $ExcludePaths) {
+    $clean = $path -replace '\\', '/'
+    $clean = $clean -replace '^\./', ''
+    $NormalizedExcludes.Add($clean)
+}
+
+# 2. FILE DISCOVERY
+$RootPath = (Get-Location).Path
+$RawFiles = @()
 
 if (Test-Path ".git") {
     try {
+        # Git is much faster than Get-ChildItem for large trees
         $GitOutput = git ls-files --cached --others --exclude-standard 2>$null
-        $AllFiles = $GitOutput | ForEach-Object { $_.Trim() }
+        $RawFiles = $GitOutput
     } catch {
-        $AllFiles = Get-ChildItem -Recurse -File | ForEach-Object { $_.FullName.Substring($RootPath.Path.Length + 1) }
+        Write-Warning "Git command failed, falling back to file system scan."
+        $RawFiles = Get-ChildItem -Recurse -File | Select-Object -ExpandProperty FullName
     }
 } else {
-    $AllFiles = Get-ChildItem -Recurse -File | ForEach-Object { $_.FullName.Substring($RootPath.Path.Length + 1) }
+    $RawFiles = Get-ChildItem -Recurse -File | Select-Object -ExpandProperty FullName
 }
 
-# --- 2. FILTER ARGUMENTS ---
-$FilterExtensions = @()
-$FilterActive = $false
-$ExcludeActive = $ExcludePaths.Count -gt 0
-$PatternActive = $false
+# 3. PROCESSING ENGINE
+$OutputBuilder = [System.Text.StringBuilder]::new()
+$StructureList = [System.Collections.Generic.List[string]]::new()
+$TotalBytes = 0
+$FileCount = 0
 
-if ($ArgsList.Count -gt 0) {
-    for ($i = 0; $i -lt $ArgsList.Count; $i++) {
-        $arg = $ArgsList[$i]
+foreach ($FileEntry in $RawFiles) {
+    # Normalize Path to relative Unix-style path
+    if ($FileEntry -match "^[A-Za-z]:") {
+        # It's an absolute Windows path (from Get-ChildItem)
+        $RelPath = $FileEntry.Substring($RootPath.Length).Trim('\', '/')
+    } else {
+        # It's already relative (from git ls-files)
+        $RelPath = $FileEntry.Trim()
+    }
+    
+    $RelPath = $RelPath -replace '\\', '/'
+    
+    # --- FILTERS ---
+    
+    # 1. Regex Bans (Lockfiles, Binaries, System)
+    if ($IgnoreRegex.IsMatch($RelPath)) { continue }
+    
+    # 2. Security Bans
+    if ($SecurityRegex.IsMatch($RelPath)) { continue }
 
-        # Check for --exclude flag (consume next arg)
-        if ($arg -eq "--exclude" -or $arg -eq "-exclude") {
-            if ($i + 1 -lt $ArgsList.Count) {
-                $ExcludePaths += $ArgsList[++$i]
-                $ExcludeActive = $true
-            }
-            continue
-        }
-
-        # Check if it's a pattern (starts with --)
-        if ($arg -match "^--") {
-            # Match Bash behavior: remove leading --
-            $pattern = $arg -replace "^--", ""
-            if ($pattern.Trim() -ne "") {
-                $ExcludePatterns += $pattern.Trim()
-                $PatternActive = $true
-            }
-            continue
-        }
-
-        # Check if it's an extension exclusion (starts with -. )
-        if ($arg -match "^-\.") {
-            # Match Bash behavior: remove leading -.
-            $ext = $arg -replace "^-\.", ""
-            $ExcludePatterns += "*.$ext"
-            $PatternActive = $true
-            continue
-        }
-
-        # Check if it's an exclude path (starts with - but not -.)
-        if ($arg -match "^-") {
-            $path = $arg -replace "^-", ""
-            $ExcludePaths += $path
-            $ExcludeActive = $true
-            continue
-        }
-
-        $arg = $arg.ToLower()
-        if ($Presets.ContainsKey($arg)) {
-            $FilterExtensions += $Presets[$arg]
-            $FilterActive = $true
-        } else {
-            $FilterExtensions += $arg -replace "^\.", ""
-            $FilterActive = $true
+    # 3. Path Exclusions (Prefix Match)
+    # Check if path starts with or contains any excluded folder
+    $IsExcluded = $false
+    foreach ($ex in $NormalizedExcludes) {
+        if ($RelPath -eq $ex -or $RelPath.StartsWith("$ex/") -or $RelPath -like "*/$ex/*") {
+            $IsExcluded = $true; break
         }
     }
-}
+    if ($IsExcluded) { continue }
 
-# Normalize exclude paths
-$NormalizedExcludes = @()
-foreach ($path in $ExcludePaths) {
-    $normalized = $path -replace '\\', '/'
-    $normalized = $normalized.TrimStart('./')
-    $NormalizedExcludes += $normalized
-}
+    # 4. Pattern Exclusions (Wildcards/Regex)
+    foreach ($pat in $ExcludePatterns) {
+        if ($RelPath -match $pat) { $IsExcluded = $true; break }
+    }
+    if ($IsExcluded) { continue }
 
-# --- 3. PROCESSING ENGINE ---
-$ResultBuilder = [System.Text.StringBuilder]::new()
-$ProcessedFiles = @()
-$TotalBytes = 0
-$Count = 0
+    # 5. Extension/Preset Filter
+    $Ext = [System.IO.Path]::GetExtension($RelPath).TrimStart('.')
+    if ($IsFilterActive -and -not $TargetExtensions.Contains($Ext)) { continue }
 
-foreach ($RelPath in $AllFiles) {
-    # Normalize slashes to forward slash for consistency
-    $RelPath = $RelPath -replace '\\', '/'
-    # Remove leading slash if present
-    $RelPath = $RelPath.TrimStart('/')
+    # --- CONTENT PROCESSING ---
     
     $FullPath = Join-Path $RootPath $RelPath
     $FileInfo = Get-Item $FullPath -ErrorAction SilentlyContinue
+    if (-not $FileInfo -or $FileInfo.Length -gt $MAX_SIZE -or $FileInfo.Length -eq 0) { continue }
 
-    if (-not $FileInfo) { continue }
-
-    if ($RelPath -match $IgnoreRegex) { continue }
-    if ($RelPath -match $SecurityRegex) { continue }
-    
-    # Check exclude paths
-    if ($ExcludeActive) {
-        $shouldExclude = $false
-        foreach ($excludePath in $NormalizedExcludes) {
-            # Normalize exclude path too
-            $excludePath = $excludePath -replace '\\', '/'
-            if ($RelPath -like "$excludePath*" -or $RelPath -like "*/$excludePath/*" -or $RelPath -eq $excludePath) {
-                $shouldExclude = $true
-                break
-            }
-        }
-        if ($shouldExclude) { continue }
-    }
-
-    # Check pattern excludes (wildcard matching on folder/file names)
-    if ($PatternActive) {
-        $shouldExclude = $false
-        foreach ($pattern in $ExcludePatterns) {
-            # ROBUST GLOB-TO-REGEX CONVERSION
-            # Construct the regex manually to avoid [regex]::Escape confusion with wildcards
-            $sb = [System.Text.StringBuilder]::new()
-            $chars = $pattern.ToCharArray()
-            foreach ($c in $chars) {
-                if ($c -eq '*') { [void]$sb.Append(".*") }
-                elseif ($c -eq '?') { [void]$sb.Append(".") }
-                else { [void]$sb.Append([regex]::Escape($c.ToString())) }
-            }
-            $regexPattern = $sb.ToString()
-
-            # Get all path segments (folders and file)
-            $pathSegments = $RelPath -split '/'
-            $matched = $false
-
-            foreach ($segment in $pathSegments) {
-                # Case-insensitive match (PowerShell default)
-                # Unanchored match allows partial segment matches (e.g. *.Tests matches Utils.Tests)
-                if ($segment -match $regexPattern) {
-                    $matched = $true
-                    break
-                }
-            }
-
-            if ($matched) {
-                $shouldExclude = $true
-                break
-            }
-        }
-        if ($shouldExclude) { continue }
-    }
-    
-    $Ext = $FileInfo.Extension -replace "^\.", ""
-    if ($FilterActive) {
-        if ($FilterExtensions -notcontains $Ext) { continue }
-    }
-
-    if ($FileInfo.Length -gt $MaxSize -or $FileInfo.Length -eq 0) { continue }
-
-    $Lang = $Ext
-    if ($LangMap.ContainsKey($Lang.ToLower())) { $Lang = $LangMap[$Lang.ToLower()] }
-
-    # --- READ CONTENT ---
     try {
-        $Content = Get-Content -LiteralPath $FullPath -Raw -ErrorAction Stop
-        
-        # Build Output
-        [void]$ResultBuilder.AppendLine("## File: $RelPath")
-        
-        # FIX: Use variable for code fence to avoid parser confusion
-        [void]$ResultBuilder.AppendLine("$Fence$Lang")
-        [void]$ResultBuilder.AppendLine($Content)
-        [void]$ResultBuilder.AppendLine($Fence)
-        [void]$ResultBuilder.AppendLine("")
+        # Determine Highlighting Language
+        $Lang = if ($LANG_MAP.ContainsKey($Ext.ToLower())) { $LANG_MAP[$Ext.ToLower()] } else { $Ext }
 
-        $ProcessedFiles += $RelPath
+        # Read File
+        $Content = [System.IO.File]::ReadAllText($FullPath, [System.Text.Encoding]::UTF8)
+
+        # Append to Buffer
+        [void]$OutputBuilder.AppendLine("## File: $RelPath")
+        [void]$OutputBuilder.AppendLine("$FENCE$Lang")
+        [void]$OutputBuilder.AppendLine($Content)
+        [void]$OutputBuilder.AppendLine($FENCE)
+        [void]$OutputBuilder.AppendLine("")
+
+        $StructureList.Add($RelPath)
         $TotalBytes += $FileInfo.Length
-        $Count++
+        $FileCount++
     }
-    catch { continue }
+    catch {
+        Write-Warning "Could not read file: $RelPath"
+    }
 }
 
-# --- 4. FOOTER ---
-[void]$ResultBuilder.AppendLine("")
-[void]$ResultBuilder.AppendLine("_Project Structure:_")
-[void]$ResultBuilder.AppendLine("${Fence}text")
-$ProcessedFiles | Sort-Object | ForEach-Object {
-    [void]$ResultBuilder.AppendLine($_)
+# 4. GENERATE FOOTER & STATS
+[void]$OutputBuilder.AppendLine("")
+[void]$OutputBuilder.AppendLine("_Project Structure:_")
+[void]$OutputBuilder.AppendLine("${FENCE}text")
+$StructureList.Sort()
+foreach ($Path in $StructureList) {
+    [void]$OutputBuilder.AppendLine($Path)
 }
-[void]$ResultBuilder.AppendLine($Fence)
+[void]$OutputBuilder.AppendLine($FENCE)
 
-# --- 5. STATS & CLIPBOARD ---
-$FinalString = $ResultBuilder.ToString()
-Set-Clipboard -Value $FinalString
+$FinalOutput = $OutputBuilder.ToString()
 
-# Tokens calc
+# 5. CLIPBOARD & UI
+try {
+    Set-Clipboard -Value $FinalOutput
+} catch {
+    Write-Error "Failed to copy to clipboard. Output size might be too large."
+    exit 1
+}
+
+# Calculation & formatting
 $Tokens = [math]::Truncate($TotalBytes / 4)
+if ($TotalBytes -lt 1KB) { $SizeStr = "{0} B" -f $TotalBytes }
+elseif ($TotalBytes -lt 1MB) { $SizeStr = "{0:N2} KB" -f ($TotalBytes / 1KB) }
+else { $SizeStr = "{0:N2} MB" -f ($TotalBytes / 1MB) }
 
-# Human Readable Size
-# FIX: Use Single Quotes here to prevent 'Unexpected token' errors
-$HumanSize = ""
-if ($TotalBytes -lt 1KB) { $HumanSize = '{0} B' -f $TotalBytes }
-elseif ($TotalBytes -lt 1MB) { $HumanSize = '{0:N2} KB' -f ($TotalBytes / 1KB) }
-else { $HumanSize = '{0:N2} MB' -f ($TotalBytes / 1MB) }
-
-# Visual Output
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+# Final Status Line
 Write-Host "[OK]" -NoNewline -ForegroundColor Green
 Write-Host " Copied: " -NoNewline -ForegroundColor Green
-Write-Host "$Count" -NoNewline -ForegroundColor White
+Write-Host "$FileCount" -NoNewline -ForegroundColor White
 Write-Host " files | Size: " -NoNewline -ForegroundColor Green
-Write-Host "$HumanSize" -NoNewline -ForegroundColor White
+Write-Host "$SizeStr" -NoNewline -ForegroundColor White
 Write-Host " | Tokens: " -NoNewline -ForegroundColor Green
 Write-Host "~$Tokens" -ForegroundColor White
