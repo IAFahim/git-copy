@@ -225,17 +225,29 @@ foreach ($RelPath in $AllFiles) {
     if ($PatternActive) {
         $shouldExclude = $false
         foreach ($pattern in $ExcludePatterns) {
+            # Manual regex construction for robustness
+            # We iterate characters to avoid double-escaping issues with -replace
+            $regexBuilder = [System.Text.StringBuilder]::new()
+            $chars = $pattern.ToCharArray()
+            
+            foreach ($c in $chars) {
+                if ($c -eq '*') { 
+                    [void]$regexBuilder.Append(".*") 
+                }
+                elseif ($c -eq '?') { 
+                    [void]$regexBuilder.Append(".") 
+                }
+                else { 
+                    [void]$regexBuilder.Append([regex]::Escape($c.ToString())) 
+                }
+            }
+            $regexPattern = $regexBuilder.ToString()
+            
             # Get all path segments (folders and file)
             $pathSegments = $RelPath -split '/'
             $matched = $false
 
             foreach ($segment in $pathSegments) {
-                # Convert wildcard pattern to regex for substring matching
-                # 1. Escape special chars to avoid regex errors (e.g. dots in filenames)
-                $safe = [regex]::Escape($pattern)
-                # 2. Convert wildcards: * -> .*, ? -> .
-                $regexPattern = $safe -replace "\\\*", ".*" -replace "\\\?", "."
-                
                 if ($segment -match $regexPattern) {
                     $matched = $true
                     break
