@@ -34,6 +34,7 @@ jobs:
           "public class TestClass {}" | Set-Content "TestProject/MyApp.Tests/UnitTest.cs"
           "public class UtilsTest {}" | Set-Content "TestProject/Utils.Tests.cs"
           "# Test File" | Set-Content "TestProject/README.md"
+          New-Item -ItemType Directory -Force -Path "TestProject/docs"
           "# Docs" | Set-Content "TestProject/docs/guide.md"
           "test content" | Set-Content "TestProject/test_file.cs"
 
@@ -189,6 +190,7 @@ jobs:
           echo "public class TestClass {}" > MyApp.Tests/UnitTest.cs
           echo "public class UtilsTest {}" > Utils.Tests.cs
           echo "# Test File" > README.md
+          mkdir -p docs
           echo "# Docs" > docs/guide.md
           echo "test content" > test_file.cs
 
