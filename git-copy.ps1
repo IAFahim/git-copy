@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    GIT-COPY | v17.2 | Professional Edition
+    GIT-COPY | v17.3 | Professional Edition (Fixes Pattern Matching)
     Bundles code files into a single Markdown snippet and copies to clipboard.
 #>
 
@@ -15,6 +15,7 @@ param(
 
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = "Stop"
+# Force UTF-8 to prevent encoding issues
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 # --- CONFIG ---
@@ -43,30 +44,24 @@ $LANG_MAP = @{
     "uss" = "css"; "uxml" = "xml"; "ps1" = "powershell"
 }
 
-# --- REGEX HELPERS ---
+# --- HELPERS ---
 function Convert-GlobToRegex {
     param([string]$Pattern)
-    # Robust char-by-char conversion to avoid regex-replace confusion
-    $sb = [System.Text.StringBuilder]::new()
-    [void]$sb.Append("^.*") # Anchor start, allow leading path
-    
-    $chars = $Pattern.ToCharArray()
-    foreach ($c in $chars) {
-        if ($c -eq '*') { [void]$sb.Append(".*") }
-        elseif ($c -eq '?') { [void]$sb.Append(".") }
-        else { [void]$sb.Append([regex]::Escape($c.ToString())) }
-    }
-    
-    [void]$sb.Append(".*$") # Anchor end, allow trailing path/content
-    return $sb.ToString()
+    # 1. Escape everything to treat dots, brackets, etc as literals
+    $safe = [regex]::Escape($Pattern)
+    # 2. Convert escaped wildcards back to regex wildcards
+    #    \*  (literal *) becomes .* (match anything)
+    #    \?  (literal ?) becomes .  (match one char)
+    $regex = $safe -replace "\\\*", ".*" -replace "\\\?", "."
+    # 3. Anchor start/end loosely to match "contains path"
+    return "^.*$regex.*$"
 }
 
 # --- MAIN ---
-# Force array to prevent StrictMode crash on empty input
 $ArgsList = @($Arguments)
 
 if ($Help -or ($ArgsList -contains "--help") -or ($ArgsList -contains "-h")) {
-    Write-Host "GIT-COPY | v17.2" -ForegroundColor Cyan
+    Write-Host "GIT-COPY | v17.3" -ForegroundColor Cyan
     exit 0
 }
 
@@ -82,8 +77,8 @@ for ($i = 0; $i -lt $ArgsList.Count; $i++) {
     if ($SkipNext) { $SkipNext = $false; continue }
     $arg = $ArgsList[$i]
     
-    # explicit --exclude flag
-    if ($arg -match "^--exclude$|^-exclude$") {
+    # 1. Explicit Exclude Flag: --exclude / -exclude
+    if ($arg -eq "--exclude" -or $arg -eq "-exclude") {
         if ($i + 1 -lt $ArgsList.Count) {
             $ExcludePaths.Add($ArgsList[$i+1].TrimStart("-"))
             $SkipNext = $true
@@ -91,27 +86,34 @@ for ($i = 0; $i -lt $ArgsList.Count; $i++) {
         continue
     }
 
-    # Pattern exclusion: --*.Tests
-    if ($arg -match "^--(?!exclude)(.+)") {
-        $pat = $Matches[1]
-        $ExcludePatterns.Add((Convert-GlobToRegex $pat))
+    # 2. Pattern Exclusion: --*.Tests (Starts with --)
+    if ($arg.StartsWith("--")) {
+        $pat = $arg.Substring(2) # Strip --
+        if (-not [string]::IsNullOrWhiteSpace($pat)) {
+            $ExcludePatterns.Add((Convert-GlobToRegex $pat))
+        }
         continue
     }
 
-    # Extension exclusion: -.md
-    if ($arg -match "^-\.(.+)") {
-        $ext = $Matches[1]
-        $ExcludePatterns.Add((Convert-GlobToRegex "*.$ext"))
+    # 3. Extension Exclusion: -.md (Starts with -.)
+    if ($arg.StartsWith("-.")) {
+        $ext = $arg.Substring(2) # Strip -.
+        if (-not [string]::IsNullOrWhiteSpace($ext)) {
+            $ExcludePatterns.Add((Convert-GlobToRegex "*.$ext"))
+        }
         continue
     }
 
-    # Path exclusion: -node_modules
-    if ($arg -match "^-(.+)") {
-        $ExcludePaths.Add($Matches[1])
+    # 4. Path Exclusion: -node_modules (Starts with -)
+    if ($arg.StartsWith("-")) {
+        $path = $arg.Substring(1) # Strip -
+        if (-not [string]::IsNullOrWhiteSpace($path)) {
+            $ExcludePaths.Add($path)
+        }
         continue
     }
 
-    # Presets/Extensions
+    # 5. Presets/Extensions (No prefix)
     $val = $arg.ToLower().TrimStart(".")
     if ($PRESETS.ContainsKey($val)) {
         $PRESETS[$val] | ForEach-Object { $TargetExtensions.Add($_) }
@@ -123,6 +125,7 @@ for ($i = 0; $i -lt $ArgsList.Count; $i++) {
 # Normalize Exclude Paths
 $NormalizedExcludes = [System.Collections.Generic.List[string]]::new()
 foreach ($path in $ExcludePaths) {
+    # Unify separators to forward slash
     $clean = $path -replace '\\', '/'
     $clean = $clean -replace '^\./', ''
     $NormalizedExcludes.Add($clean)
@@ -155,18 +158,24 @@ $SecRe = [regex]::new("(id_rsa|id_dsa|\.pem|\.key|\.p12|\.env|secrets|credential
 foreach ($FileEntry in $RawFiles) {
     if ([string]::IsNullOrWhiteSpace($FileEntry)) { continue }
 
+    # Normalize Path to relative Unix-style path
     if ($FileEntry -match "^[A-Za-z]:") {
+        # It's an absolute Windows path (from Get-ChildItem)
         $RelPath = $FileEntry.Substring($RootPath.Length).Trim('\', '/')
     } else {
+        # It's already relative (from git)
         $RelPath = $FileEntry.Trim()
     }
+    # Force forward slashes for ALL regex/comparison logic
     $RelPath = $RelPath -replace '\\', '/'
 
-    # FILTERS
+    # --- FILTERS ---
+
+    # 1. Regex Bans
     if ($IgnoreRe.IsMatch($RelPath)) { continue }
     if ($SecRe.IsMatch($RelPath)) { continue }
 
-    # Path Exclusions
+    # 2. Path Exclusions (Prefix Match)
     $IsExcluded = $false
     foreach ($ex in $NormalizedExcludes) {
         if ($RelPath -eq $ex -or $RelPath.StartsWith("$ex/") -or $RelPath -like "*/$ex/*") {
@@ -175,7 +184,7 @@ foreach ($FileEntry in $RawFiles) {
     }
     if ($IsExcluded) { continue }
 
-    # Pattern Exclusions
+    # 3. Pattern Exclusions (Regex Match)
     foreach ($pat in $ExcludePatterns) {
         if ($RelPath -match $pat) { 
             $IsExcluded = $true
@@ -184,11 +193,11 @@ foreach ($FileEntry in $RawFiles) {
     }
     if ($IsExcluded) { continue }
 
-    # Extension Filter
+    # 4. Extension Filter
     $Ext = [System.IO.Path]::GetExtension($RelPath).TrimStart('.')
     if ($IsFilterActive -and -not $TargetExtensions.Contains($Ext)) { continue }
 
-    # Content
+    # --- CONTENT ---
     $FullPath = Join-Path $RootPath $RelPath
     $FileInfo = Get-Item $FullPath -ErrorAction SilentlyContinue
     if (-not $FileInfo -or $FileInfo.Length -gt $MAX_SIZE -or $FileInfo.Length -eq 0) { continue }
