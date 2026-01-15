@@ -1,21 +1,17 @@
 <#
 .SYNOPSIS
-    GIT-COPY | v17.0 | Professional Edition
+    GIT-COPY | v17.1 | Professional Edition (Hotfix)
     Bundles code files into a single Markdown snippet and copies to clipboard.
 
 .DESCRIPTION
     A high-performance, cross-platform tool to aggregate code context for LLMs.
     Respects .gitignore, handles binary exclusion, and secures secrets automatically.
-
-.EXAMPLE
-    git copy web -node_modules
-    Copies all web assets (html/css/js) but excludes the node_modules folder.
 #>
 
 [CmdletBinding()]
 param(
     [Parameter(ValueFromRemainingArguments = $true)]
-    [string[]]$Arguments,
+    [string[]]$Arguments = @(), # Initialize to empty array to prevent strict mode crash
 
     [Alias("h")]
     [switch]$Help
@@ -24,7 +20,7 @@ param(
 # -----------------------------------------------------------------------------
 # CONFIGURATION & CONSTANTS
 # -----------------------------------------------------------------------------
-Set-StrictMode -Version Latest
+Set-StrictMode -Version 2.0
 $ErrorActionPreference = "Stop"
 
 # Force UTF-8 Output to prevent crashes with special characters/emojis
@@ -32,7 +28,7 @@ $ErrorActionPreference = "Stop"
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
 $MAX_SIZE = 1MB
-$FENCE = '```' # Avoids parser issues with backticks
+$FENCE = '```' 
 
 # Preset Definitions
 $PRESETS = @{
@@ -49,7 +45,7 @@ $PRESETS = @{
     "docs"    = @("md","txt","rst","adoc")
 }
 
-# Language Mapping for Syntax Highlighting
+# Language Mapping
 $LANG_MAP = @{
     "js" = "javascript"; "ts" = "typescript"; "py" = "python";
     "cs" = "csharp"; "sh" = "bash"; "md" = "markdown";
@@ -58,7 +54,7 @@ $LANG_MAP = @{
     "uss" = "css"; "uxml" = "xml"; "ps1" = "powershell"
 }
 
-# Regex Compilations (Performance Optimization)
+# Regex Compilations
 $RegexOptions = [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
 $IgnoreRegex   = [regex]::new("(package-lock\.json|yarn\.lock|Cargo\.lock|\.DS_Store|Thumbs\.db|\.git/|\.png$|\.jpg$|\.jpeg$|\.gif$|\.ico$|\.woff2?$|\.pdf$|\.exe$|\.bin$|\.pyc$|\.dll$|\.pdb$|\.min\.js$|\.min\.css$|\.meta$)", $RegexOptions)
 $SecurityRegex = [regex]::new("(id_rsa|id_dsa|\.pem|\.key|\.p12|\.env|secrets|credentials)", $RegexOptions)
@@ -68,7 +64,7 @@ $SecurityRegex = [regex]::new("(id_rsa|id_dsa|\.pem|\.key|\.p12|\.env|secrets|cr
 # -----------------------------------------------------------------------------
 function Show-Help {
     Write-Host @"
-GIT-COPY | v17.0 | Professional Edition
+GIT-COPY | v17.1 | Professional Edition
 
 USAGE:
     git copy [OPTIONS] [FILTERS] [EXCLUDES]
@@ -85,25 +81,25 @@ EXAMPLES:
 
 function Convert-GlobToRegex {
     param([string]$Pattern)
-    # Escape special regex chars, then convert wildcards back to regex syntax
     $safe = [regex]::Escape($Pattern)
     $safe = $safe -replace "\\\*", ".*" -replace "\\\?", "."
-    return "^.*$safe.*$" # Loose match similar to original script logic
+    return "^.*$safe.*$" 
 }
 
 # -----------------------------------------------------------------------------
 # MAIN EXECUTION FLOW
 # -----------------------------------------------------------------------------
 
-# 0. Handle Help
-if ($Help -or ($Arguments -contains "--help") -or ($Arguments -contains "-h")) {
+# Force argument list to array to satisfy StrictMode in PS 5.1
+$ArgsList = @($Arguments)
+
+if ($Help -or ($ArgsList -contains "--help") -or ($ArgsList -contains "-h")) {
     Show-Help
 }
 
 Write-Host "Processing..." -ForegroundColor Cyan
 
 # 1. PARSE ARGUMENTS
-# Using Generic Lists for performance (Arrays are slow in PS for add operations)
 $TargetExtensions = [System.Collections.Generic.List[string]]::new()
 $ExcludePaths     = [System.Collections.Generic.List[string]]::new()
 $ExcludePatterns  = [System.Collections.Generic.List[string]]::new()
@@ -111,16 +107,16 @@ $ExcludePatterns  = [System.Collections.Generic.List[string]]::new()
 $IsFilterActive = $false
 $SkipNext = $false
 
-for ($i = 0; $i -lt $Arguments.Count; $i++) {
+for ($i = 0; $i -lt $ArgsList.Count; $i++) {
     if ($SkipNext) { $SkipNext = $false; continue }
     
-    $arg = $Arguments[$i]
+    $arg = $ArgsList[$i]
     
     switch -Regex ($arg) {
         # explicit --exclude flag
         "^--exclude$|^-exclude$" {
-            if ($i + 1 -lt $Arguments.Count) {
-                $ExcludePaths.Add($Arguments[$i+1].TrimStart("-"))
+            if ($i + 1 -lt $ArgsList.Count) {
+                $ExcludePaths.Add($ArgsList[$i+1].TrimStart("-"))
                 $SkipNext = $true
             }
         }
@@ -149,7 +145,7 @@ for ($i = 0; $i -lt $Arguments.Count; $i++) {
     }
 }
 
-# Normalize Exclude Paths (Forward slashes, no leading ./)
+# Normalize Exclude Paths
 $NormalizedExcludes = [System.Collections.Generic.List[string]]::new()
 foreach ($path in $ExcludePaths) {
     $clean = $path -replace '\\', '/'
@@ -163,7 +159,6 @@ $RawFiles = @()
 
 if (Test-Path ".git") {
     try {
-        # Git is much faster than Get-ChildItem for large trees
         $GitOutput = git ls-files --cached --others --exclude-standard 2>$null
         $RawFiles = $GitOutput
     } catch {
@@ -181,12 +176,14 @@ $TotalBytes = 0
 $FileCount = 0
 
 foreach ($FileEntry in $RawFiles) {
+    if ([string]::IsNullOrWhiteSpace($FileEntry)) { continue }
+
     # Normalize Path to relative Unix-style path
     if ($FileEntry -match "^[A-Za-z]:") {
-        # It's an absolute Windows path (from Get-ChildItem)
+        # It's an absolute Windows path
         $RelPath = $FileEntry.Substring($RootPath.Length).Trim('\', '/')
     } else {
-        # It's already relative (from git ls-files)
+        # It's already relative
         $RelPath = $FileEntry.Trim()
     }
     
@@ -194,14 +191,13 @@ foreach ($FileEntry in $RawFiles) {
     
     # --- FILTERS ---
     
-    # 1. Regex Bans (Lockfiles, Binaries, System)
+    # 1. Regex Bans
     if ($IgnoreRegex.IsMatch($RelPath)) { continue }
     
     # 2. Security Bans
     if ($SecurityRegex.IsMatch($RelPath)) { continue }
 
-    # 3. Path Exclusions (Prefix Match)
-    # Check if path starts with or contains any excluded folder
+    # 3. Path Exclusions
     $IsExcluded = $false
     foreach ($ex in $NormalizedExcludes) {
         if ($RelPath -eq $ex -or $RelPath.StartsWith("$ex/") -or $RelPath -like "*/$ex/*") {
@@ -210,7 +206,7 @@ foreach ($FileEntry in $RawFiles) {
     }
     if ($IsExcluded) { continue }
 
-    # 4. Pattern Exclusions (Wildcards/Regex)
+    # 4. Pattern Exclusions
     foreach ($pat in $ExcludePatterns) {
         if ($RelPath -match $pat) { $IsExcluded = $true; break }
     }
@@ -227,13 +223,9 @@ foreach ($FileEntry in $RawFiles) {
     if (-not $FileInfo -or $FileInfo.Length -gt $MAX_SIZE -or $FileInfo.Length -eq 0) { continue }
 
     try {
-        # Determine Highlighting Language
         $Lang = if ($LANG_MAP.ContainsKey($Ext.ToLower())) { $LANG_MAP[$Ext.ToLower()] } else { $Ext }
-
-        # Read File
         $Content = [System.IO.File]::ReadAllText($FullPath, [System.Text.Encoding]::UTF8)
 
-        # Append to Buffer
         [void]$OutputBuilder.AppendLine("## File: $RelPath")
         [void]$OutputBuilder.AppendLine("$FENCE$Lang")
         [void]$OutputBuilder.AppendLine($Content)
@@ -265,17 +257,15 @@ $FinalOutput = $OutputBuilder.ToString()
 try {
     Set-Clipboard -Value $FinalOutput
 } catch {
-    Write-Error "Failed to copy to clipboard. Output size might be too large."
+    Write-Error "Failed to copy to clipboard."
     exit 1
 }
 
-# Calculation & formatting
 $Tokens = [math]::Truncate($TotalBytes / 4)
 if ($TotalBytes -lt 1KB) { $SizeStr = "{0} B" -f $TotalBytes }
 elseif ($TotalBytes -lt 1MB) { $SizeStr = "{0:N2} KB" -f ($TotalBytes / 1KB) }
 else { $SizeStr = "{0:N2} MB" -f ($TotalBytes / 1MB) }
 
-# Final Status Line
 Write-Host "[OK]" -NoNewline -ForegroundColor Green
 Write-Host " Copied: " -NoNewline -ForegroundColor Green
 Write-Host "$FileCount" -NoNewline -ForegroundColor White
