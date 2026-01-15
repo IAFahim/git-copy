@@ -147,7 +147,11 @@ foreach ($FileEntry in $RawFiles) {
 
     # Path Normalization
     if ($FileEntry -match "^[A-Za-z]:") {
-        $RelPath = $FileEntry.Substring($RootPath.Length).Trim('\', '/')
+        if ($FileEntry.StartsWith($RootPath, [System.StringComparison]::OrdinalIgnoreCase)) {
+            $RelPath = $FileEntry.Substring($RootPath.Length).Trim('\', '/')
+        } else {
+            $RelPath = $FileEntry.Trim()
+        }
     } else {
         $RelPath = $FileEntry.Trim()
     }
@@ -159,42 +163,40 @@ foreach ($FileEntry in $RawFiles) {
     if ($IgnoreRe.IsMatch($RelPath)) { continue }
     if ($SecRe.IsMatch($RelPath)) { continue }
 
-    # 2. User Exclusions (The "Different Direction" Logic)
-    # We split path into segments and check wildcards against each segment.
-    # This mimics gitignore behavior for patterns like "*.Tests" or "node_modules".
+    # 2. User Exclusions
     $IsExcluded = $false
     $PathSegments = $RelPath -split '/'
     
+    # DEBUG LOGGING (Conditional)
+    if ($ExcludePatterns.Count -gt 0 -and ($RelPath -match "Test" -or $RelPath -match "node_modules")) {
+         Write-Host "DEBUG: Checking '$RelPath' (Segments: $($PathSegments -join ','))" -ForegroundColor Gray
+    }
+
     foreach ($pat in $ExcludePatterns) {
-        # 1. Full Path Check first for explicit paths
+        # 1. Full Path Check
         if ($RelPath -like $pat -or $RelPath -like "$pat/*") {
             $IsExcluded = $true
+            Write-Host "  > EXCLUDED by FullPath match: '$pat'" -ForegroundColor Yellow
             break
         }
 
-        # 2. Segment Check with fuzzy matching
-        # If user explicitly provided wildcards, rely on them, but also support containment.
-        # But if the pattern is just "temp", we want to match "temp" segment.
+        # 2. Segment Check
         foreach ($seg in $PathSegments) {
-            # STRICT MATCH (User provided wildcards work here, e.g. *.Tests matching MyApp.Tests)
+            # STRICT MATCH
             if ($seg -like $pat) {
                 $IsExcluded = $true
+                Write-Host "  > EXCLUDED by Segment Strict match: '$seg' -like '$pat'" -ForegroundColor Yellow
                 break
             }
             # FUZZY/CONTAINMENT MATCH
-            # If pattern is "node", we exclude "node_modules". 
-            # If pattern is "*.Tests", does it match "Utils.Tests.cs"?
-            # "*.Tests" implies end of string.
-            # But the user might want "contains .Tests".
-            # Let's try matching "$pat*" and "*$pat*".
             if ($seg -like "*$pat*") {
                  $IsExcluded = $true
+                 Write-Host "  > EXCLUDED by Segment Fuzzy match: '$seg' -like '*$pat*'" -ForegroundColor Yellow
                  break
             }
         }
         if ($IsExcluded) { break }
     }
-
     if ($IsExcluded) { continue }
 
     # 3. Extension Filter
