@@ -137,7 +137,7 @@ $IsFilterActive = $TargetExtensions.Count -gt 0
 
 # Security / Garbage Regex (Keep this for safety/noise)
 $RegexOpts = [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
-$IgnoreRe = [regex]::new("(package-lock\.json|yarn\.lock|Cargo\.lock|\.DS_Store|Thumbs\.db|\.git/|\.png$|\.jpg$|\.jpeg$|\.gif$|\.ico$|\.woff2?$|\.pdf$|\.exe$|\.bin$|\.pyc$|\.dll$|\.pdb$|\.min\.js$|\.min\.css$|\.meta$)", $RegexOpts)
+$IgnoreRe = [regex]::new("(node_modules/|bin/|obj/|package-lock\.json|yarn\.lock|Cargo\.lock|\.DS_Store|Thumbs\.db|\.git/|\.png$|\.jpg$|\.jpeg$|\.gif$|\.ico$|\.woff2?$|\.pdf$|\.exe$|\.bin$|\.pyc$|\.dll$|\.pdb$|\.min\.js$|\.min\.css$|\.meta$)", $RegexOpts)
 $SecRe = [regex]::new("(id_rsa|id_dsa|\.pem|\.key|\.p12|\.env|secrets|credentials)", $RegexOpts)
 
 foreach ($FileEntry in $RawFiles) {
@@ -164,13 +164,16 @@ foreach ($FileEntry in $RawFiles) {
     $PathSegments = $RelPath -split '/'
     
     foreach ($pat in $ExcludePatterns) {
+        # Convert patterns for proper wildcard matching:
+        # - "*.Tests" -> "*.Tests*" (match anything containing ".Tests")
+        # - "node_modules" -> "*node_modules*" (match anything containing "node_modules")
+        $WildcardPat = if ($pat.StartsWith('*')) { "$pat*" } else { "*$pat*" }
+
         # A. Check Segments (Matches "node_modules", "*.Tests", "bin")
         foreach ($seg in $PathSegments) {
-            # Check exact pattern OR pattern as loose text (substring behavior)
-            # This ensures "node" excludes "node_modules", and "*.Tests" excludes "Utils.Tests.cs"
-            if ($seg -like $pat -or $seg -like "*$pat*") { 
+            if ($seg -like $WildcardPat) {
                 $IsExcluded = $true
-                break 
+                break
             }
         }
         if ($IsExcluded) { break }
@@ -178,9 +181,9 @@ foreach ($FileEntry in $RawFiles) {
         # B. Check Full Path (Matches "src/tests", "*/tests/*")
         # Ensure we match subfolders if pattern is just a folder name but didn't match segment exactly above
         # (e.g. pattern "test" should match "src/test/file.cs")
-        
+
         # Standard Wildcard Check on Full Path
-        if ($RelPath -like $pat -or $RelPath -like "$pat/*" -or $RelPath -like "*/$pat/*") {
+        if ($RelPath -like $WildcardPat -or $RelPath -like "$pat/*" -or $RelPath -like "*/$pat/*") {
             $IsExcluded = $true
             break
         }
