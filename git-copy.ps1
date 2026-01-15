@@ -132,7 +132,6 @@ $ExcludeActive = $ExcludePaths.Count -gt 0
 $PatternActive = $false
 
 if ($ArgsList.Count -gt 0) {
-    $FilterActive = $true
     foreach ($arg in $ArgsList) {
         # Check for --exclude flag
         if ($arg -eq "--exclude" -or $arg -eq "-exclude") {
@@ -165,8 +164,10 @@ if ($ArgsList.Count -gt 0) {
         $arg = $arg.ToLower()
         if ($Presets.ContainsKey($arg)) {
             $FilterExtensions += $Presets[$arg]
+            $FilterActive = $true
         } else {
             $FilterExtensions += $arg -replace "^\.", ""
+            $FilterActive = $true
         }
     }
 }
