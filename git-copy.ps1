@@ -70,6 +70,7 @@ for ($i = 0; $i -lt $ArgsList.Count; $i++) {
     if ($arg -eq "--exclude" -or $arg -eq "-exclude") {
         if ($i + 1 -lt $ArgsList.Count) {
             $path = $ArgsList[$i+1].TrimStart("-")
+            $path = $path -replace '\\', '/'
             $ExcludePatterns.Add($path)
             $SkipNext = $true
         }
@@ -101,6 +102,7 @@ for ($i = 0; $i -lt $ArgsList.Count; $i++) {
     if ($arg.StartsWith("-")) {
         $path = $arg.Substring(1) # Strip leading -
         if (-not [string]::IsNullOrWhiteSpace($path)) {
+            $path = $path -replace '\\', '/'
             $ExcludePatterns.Add($path)
             Write-Host "  > Exclude Path: '$path'" -ForegroundColor DarkGray
         }
@@ -164,30 +166,35 @@ foreach ($FileEntry in $RawFiles) {
     $PathSegments = $RelPath -split '/'
     
     foreach ($pat in $ExcludePatterns) {
-        # Convert patterns for proper wildcard matching:
-        # - "*.Tests" -> "*.Tests*" (match anything containing ".Tests")
-        # - "node_modules" -> "*node_modules*" (match anything containing "node_modules")
-        $WildcardPat = if ($pat.StartsWith('*')) { "$pat*" } else { "*$pat*" }
-
-        # A. Check Segments (Matches "node_modules", "*.Tests", "bin")
-        foreach ($seg in $PathSegments) {
-            if ($seg -like $WildcardPat) {
-                $IsExcluded = $true
-                break
-            }
-        }
-        if ($IsExcluded) { break }
-
-        # B. Check Full Path (Matches "src/tests", "*/tests/*")
-        # Ensure we match subfolders if pattern is just a folder name but didn't match segment exactly above
-        # (e.g. pattern "test" should match "src/test/file.cs")
-
-        # Standard Wildcard Check on Full Path
-        if ($RelPath -like $WildcardPat -or $RelPath -like "$pat/*" -or $RelPath -like "*/$pat/*") {
+        # 1. Full Path Check first for explicit paths
+        if ($RelPath -like $pat -or $RelPath -like "$pat/*") {
             $IsExcluded = $true
             break
         }
+
+        # 2. Segment Check with fuzzy matching
+        # If user explicitly provided wildcards, rely on them, but also support containment.
+        # But if the pattern is just "temp", we want to match "temp" segment.
+        foreach ($seg in $PathSegments) {
+            # STRICT MATCH (User provided wildcards work here, e.g. *.Tests matching MyApp.Tests)
+            if ($seg -like $pat) {
+                $IsExcluded = $true
+                break
+            }
+            # FUZZY/CONTAINMENT MATCH
+            # If pattern is "node", we exclude "node_modules". 
+            # If pattern is "*.Tests", does it match "Utils.Tests.cs"?
+            # "*.Tests" implies end of string.
+            # But the user might want "contains .Tests".
+            # Let's try matching "$pat*" and "*$pat*".
+            if ($seg -like "*$pat*") {
+                 $IsExcluded = $true
+                 break
+            }
+        }
+        if ($IsExcluded) { break }
     }
+
     if ($IsExcluded) { continue }
 
     # 3. Extension Filter

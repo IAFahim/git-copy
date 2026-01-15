@@ -79,16 +79,100 @@ public class Main {}
         if (Test-Path $ClipboardFile) { Get-Content -Path $ClipboardFile -Raw -Encoding UTF8 } else { "" }
     }
 
-    # Test 5: Exclude custom folder using -path syntax
-    Write-Host "[TEST 5] Exclude custom folder (-temp)..." -NoNewline
-    & $ScriptPath "-temp" # Removed Out-Null to see potential errors
+    # Test 1: Basic functionality
+    if (Test-Path $ClipboardFile) { Remove-Item $ClipboardFile }
+    Write-Host "[TEST 1] Basic copy all files..." -NoNewline
+    & $ScriptPath | Out-Null
     $result = Get-Clipboard
-    Write-Host "DEBUG: Clipboard content length: $($result.Length)"
+    if ($result -match "test.js" -and $result -match "test.py" -and $result -match "README.md") {
+        Write-Host " PASS" -ForegroundColor Green
+    } else {
+        Write-Host " FAIL" -ForegroundColor Red
+        throw "Basic test failed"
+    }
+
+    # Test 2: Filter by extension
+    if (Test-Path $ClipboardFile) { Remove-Item $ClipboardFile }
+    Write-Host "[TEST 2] Filter by extension (js)..." -NoNewline
+    & $ScriptPath "js" | Out-Null
+    $result = Get-Clipboard
+    if ($result -match "test.js" -and $result -notmatch "test.py") {
+        Write-Host " PASS" -ForegroundColor Green
+    } else {
+        Write-Host " FAIL" -ForegroundColor Red
+        throw "Extension filter test failed"
+    }
+
+    # Test 3: Filter by preset
+    if (Test-Path $ClipboardFile) { Remove-Item $ClipboardFile }
+    Write-Host "[TEST 3] Filter by preset (web)..." -NoNewline
+    & $ScriptPath "web" | Out-Null
+    $result = Get-Clipboard
+    if ($result -match "test.js" -and $result -match "Button.jsx") {
+        Write-Host " PASS" -ForegroundColor Green
+    } else {
+        Write-Host " FAIL" -ForegroundColor Red
+        throw "Preset filter test failed"
+    }
+
+    # Test 4: Exclude folder (node_modules)
+    if (Test-Path $ClipboardFile) { Remove-Item $ClipboardFile }
+    Write-Host "[TEST 4] Exclude folder (node_modules)..." -NoNewline
+    & $ScriptPath | Out-Null
+    $result = Get-Clipboard
+    if ($result -notmatch "node_modules") {
+        Write-Host " PASS" -ForegroundColor Green
+    } else {
+        Write-Host " FAIL" -ForegroundColor Red
+        throw "Exclude test failed - node_modules should be excluded by default"
+    }
+
+    # Test 5: Exclude custom folder using -path syntax
+    if (Test-Path $ClipboardFile) { Remove-Item $ClipboardFile }
+    Write-Host "[TEST 5] Exclude custom folder (-temp)..." -NoNewline
+    & $ScriptPath "-temp" | Out-Null
+    $result = Get-Clipboard
     if ($result -notmatch "temp.txt") {
         Write-Host " PASS" -ForegroundColor Green
     } else {
         Write-Host " FAIL" -ForegroundColor Red
         throw "Custom exclude test failed"
+    }
+
+    # Test 6: Exclude nested folder
+    if (Test-Path $ClipboardFile) { Remove-Item $ClipboardFile }
+    Write-Host "[TEST 6] Exclude nested folder (-src/components)..." -NoNewline
+    & $ScriptPath "-src/components" | Out-Null
+    $result = Get-Clipboard
+    if ($result -match "Main.java" -and $result -notmatch "Button.jsx") {
+        Write-Host " PASS" -ForegroundColor Green
+    } else {
+        Write-Host " FAIL" -ForegroundColor Red
+        throw "Nested exclude test failed"
+    }
+
+    # Test 7: Multiple excludes
+    if (Test-Path $ClipboardFile) { Remove-Item $ClipboardFile }
+    Write-Host "[TEST 7] Multiple excludes (-temp -src)..." -NoNewline
+    & $ScriptPath "-temp" "-src" | Out-Null
+    $result = Get-Clipboard
+    if ($result -notmatch "temp.txt" -and $result -notmatch "Main.java" -and $result -notmatch "Button.jsx") {
+        Write-Host " PASS" -ForegroundColor Green
+    } else {
+        Write-Host " FAIL" -ForegroundColor Red
+        throw "Multiple exclude test failed"
+    }
+
+    # Test 8: Filter and exclude combined
+    if (Test-Path $ClipboardFile) { Remove-Item $ClipboardFile }
+    Write-Host "[TEST 8] Filter (js) + Exclude (-src)..." -NoNewline
+    & $ScriptPath "js" "-src" | Out-Null
+    $result = Get-Clipboard
+    if ($result -match "test.js" -and $result -notmatch "Button.jsx") {
+        Write-Host " PASS" -ForegroundColor Green
+    } else {
+        Write-Host " FAIL" -ForegroundColor Red
+        throw "Combined filter and exclude test failed"
     }
 
     Write-Host "`n=== ALL TESTS PASSED ===" -ForegroundColor Green
