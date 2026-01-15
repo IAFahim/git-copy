@@ -148,7 +148,7 @@ if ($ArgsList.Count -gt 0) {
             # Match Bash behavior: remove leading --
             $pattern = $arg -replace "^--", ""
             if ($pattern.Trim() -ne "") {
-                $ExcludePatterns += $pattern
+                $ExcludePatterns += $pattern.Trim()
                 $PatternActive = $true
             }
             continue
@@ -199,6 +199,9 @@ $Count = 0
 foreach ($RelPath in $AllFiles) {
     # Normalize slashes to forward slash for consistency
     $RelPath = $RelPath -replace '\\', '/'
+    # Remove leading slash if present
+    $RelPath = $RelPath.TrimStart('/')
+    
     $FullPath = Join-Path $RootPath $RelPath
     $FileInfo = Get-Item $FullPath -ErrorAction SilentlyContinue
 
@@ -225,21 +228,23 @@ foreach ($RelPath in $AllFiles) {
     if ($PatternActive) {
         $shouldExclude = $false
         foreach ($pattern in $ExcludePatterns) {
-            # Convert wildcard pattern to regex
+            # Convert wildcard pattern to regex robustly
             # 1. Escape special regex characters (dots, brackets, etc.)
             $safe = [regex]::Escape($pattern)
             
             # 2. Convert escaped wildcards back to regex wildcards
-            #    Regex Escape turns "*" into "\*" and "?" into "\?".
-            #    We want to turn "\*" back into ".*" (regex wildcard)
-            #    We use String.Replace instead of -replace to avoid regex engine backslash ambiguity
-            $regexPattern = $safe.Replace("\*", ".*").Replace("\?", ".")
+            #    [regex]::Escape turns "*" into "\*" and "?" into "\?"
+            #    We use -replace (Regex-based) to turn "\*" back into ".*"
+            #    Use single quotes and 3 backslashes to match literal backslash+char in Regex mode
+            $regexPattern = $safe -replace '\\\*', '.*' -replace '\\\?', '.'
 
             # Get all path segments (folders and file)
             $pathSegments = $RelPath -split '/'
             $matched = $false
 
             foreach ($segment in $pathSegments) {
+                # Case-insensitive match (PowerShell default)
+                # Unanchored match allows partial segment matches (e.g. *.Tests matches MyApp.Tests)
                 if ($segment -match $regexPattern) {
                     $matched = $true
                     break
