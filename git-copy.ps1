@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    GIT-COPY | v17.6 | Professional Edition
+    GIT-COPY | v17.7 | Professional Edition
     Bundles code files into a single Markdown snippet and copies to clipboard.
     Now using Native PowerShell Wildcards for robust filtering.
 #>
@@ -41,15 +41,17 @@ $LANG_MAP = @{
     "js" = "javascript"; "ts" = "typescript"; "py" = "python";
     "cs" = "csharp"; "sh" = "bash"; "md" = "markdown";
     "h" = "c"; "hpp" = "cpp"; "razor" = "html"; "vue" = "html";
-    "shader" = "glsl"; "cginc" = "glsl"; "hlsl" = "glsl"; 
-    "uss" = "css"; "uxml" = "xml"; "ps1" = "powershell"
+    "shader" = "glsl"; "cginc" = "glsl"; "hlsl" = "glsl";
+    "uss" = "css"; "uxml" = "xml"; "ps1" = "powershell";
+    "dockerfile" = "dockerfile"; "makefile" = "makefile";
+    "gemfile" = "ruby"; "rakefile" = "ruby"
 }
 
 # --- MAIN ---
 $ArgsList = @($Arguments)
 
 if ($Help -or ($ArgsList -contains "--help") -or ($ArgsList -contains "-h")) {
-    Write-Host "GIT-COPY | v17.6" -ForegroundColor Cyan
+    Write-Host "GIT-COPY | v17.7" -ForegroundColor Cyan
     exit 0
 }
 
@@ -115,12 +117,12 @@ for ($i = 0; $i -lt $ArgsList.Count; $i++) {
 }
 
 # 2. DISCOVERY
-$RootPath = (Get-Location).Path
+$RootPath = (Get-Location).Path.TrimEnd('\', '/')
 $RawFiles = @()
 
 if (Test-Path ".git") {
     $GitOut = git ls-files --cached --others --exclude-standard 2>$null
-    if ($GitOut) { $RawFiles = $GitOut }
+    if ($null -ne $GitOut) { $RawFiles = @($GitOut) }
     else { $RawFiles = Get-ChildItem -Recurse -File | Select-Object -ExpandProperty FullName }
 } else {
     $RawFiles = Get-ChildItem -Recurse -File | Select-Object -ExpandProperty FullName
@@ -164,7 +166,9 @@ foreach ($FileEntry in $RawFiles) {
     foreach ($pat in $ExcludePatterns) {
         # A. Check Segments (Matches "node_modules", "*.Tests", "bin")
         foreach ($seg in $PathSegments) {
-            if ($seg -like $pat) { 
+            # Check exact pattern OR pattern as loose text (substring behavior)
+            # This ensures "node" excludes "node_modules", and "*.Tests" excludes "Utils.Tests.cs"
+            if ($seg -like $pat -or $seg -like "*$pat*") { 
                 $IsExcluded = $true
                 break 
             }
@@ -185,7 +189,13 @@ foreach ($FileEntry in $RawFiles) {
 
     # 3. Extension Filter
     $Ext = [System.IO.Path]::GetExtension($RelPath).TrimStart('.')
-    if ($IsFilterActive -and -not $TargetExtensions.Contains($Ext)) { continue }
+    $FileName = [System.IO.Path]::GetFileName($RelPath)
+
+    if ($IsFilterActive) {
+        # Check either extension OR filename (for files like Dockerfile, Makefile)
+        $Matched = $TargetExtensions.Contains($Ext) -or $TargetExtensions.Contains($FileName.ToLower())
+        if (-not $Matched) { continue }
+    }
 
     # --- CONTENT ---
     $FullPath = Join-Path $RootPath $RelPath
@@ -193,7 +203,9 @@ foreach ($FileEntry in $RawFiles) {
     if (-not $FileInfo -or $FileInfo.Length -gt $MAX_SIZE -or $FileInfo.Length -eq 0) { continue }
 
     try {
-        $Lang = if ($LANG_MAP.ContainsKey($Ext.ToLower())) { $LANG_MAP[$Ext.ToLower()] } else { $Ext }
+        # Determine language: check extension first, then filename for files without extensions
+        $LangKey = if ($Ext) { $Ext.ToLower() } else { $FileName.ToLower() }
+        $Lang = if ($LANG_MAP.ContainsKey($LangKey)) { $LANG_MAP[$LangKey] } else { $LangKey }
         $Content = [System.IO.File]::ReadAllText($FullPath, [System.Text.Encoding]::UTF8)
 
         [void]$OutputBuilder.AppendLine("## File: $RelPath")
@@ -217,7 +229,12 @@ foreach ($Path in $StructureList) { [void]$OutputBuilder.AppendLine($Path) }
 [void]$OutputBuilder.AppendLine($FENCE)
 
 $FinalOutput = $OutputBuilder.ToString()
-Set-Clipboard -Value $FinalOutput
+try {
+    Set-Clipboard -Value $FinalOutput
+} catch {
+    Write-Host "[ERROR] Failed to set clipboard: $_" -ForegroundColor Red
+    exit 1
+}
 
 $Tokens = [math]::Truncate($TotalBytes / 4)
 if ($TotalBytes -lt 1KB) { $SizeStr = "{0} B" -f $TotalBytes }
