@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    GIT-COPY | v17.3 | Professional Edition (Fixes Pattern Matching)
+    GIT-COPY | v17.4 | Professional Edition
     Bundles code files into a single Markdown snippet and copies to clipboard.
 #>
 
@@ -15,7 +15,7 @@ param(
 
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = "Stop"
-# Force UTF-8 to prevent encoding issues
+# Force UTF-8 Output
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 # --- CONFIG ---
@@ -47,21 +47,40 @@ $LANG_MAP = @{
 # --- HELPERS ---
 function Convert-GlobToRegex {
     param([string]$Pattern)
-    # 1. Escape everything to treat dots, brackets, etc as literals
-    $safe = [regex]::Escape($Pattern)
-    # 2. Convert escaped wildcards back to regex wildcards
-    #    \*  (literal *) becomes .* (match anything)
-    #    \?  (literal ?) becomes .  (match one char)
-    $regex = $safe -replace "\\\*", ".*" -replace "\\\?", "."
-    # 3. Anchor start/end loosely to match "contains path"
-    return "^.*$regex.*$"
+    
+    # 1. Manual Builder to handle characters safely
+    $sb = [System.Text.StringBuilder]::new()
+    
+    # 2. Add leading wildcard match implicitly to allow "Contains" behavior
+    #    This ensures *.Tests matches MyApp.Tests (folder) AND Utils.Tests.cs (file)
+    [void]$sb.Append("^.*")
+    
+    foreach ($char in $Pattern.ToCharArray()) {
+        if ($char -eq '*') { 
+            # Glob * becomes Regex .*
+            [void]$sb.Append(".*") 
+        }
+        elseif ($char -eq '?') { 
+            # Glob ? becomes Regex .
+            [void]$sb.Append(".") 
+        }
+        else { 
+            # Escape all other chars (dots, brackets, etc)
+            [void]$sb.Append([regex]::Escape($char.ToString())) 
+        }
+    }
+    
+    # 3. Add trailing wildcard match implicitly
+    [void]$sb.Append(".*$")
+    
+    return $sb.ToString()
 }
 
 # --- MAIN ---
 $ArgsList = @($Arguments)
 
 if ($Help -or ($ArgsList -contains "--help") -or ($ArgsList -contains "-h")) {
-    Write-Host "GIT-COPY | v17.3" -ForegroundColor Cyan
+    Write-Host "GIT-COPY | v17.4" -ForegroundColor Cyan
     exit 0
 }
 
@@ -77,43 +96,51 @@ for ($i = 0; $i -lt $ArgsList.Count; $i++) {
     if ($SkipNext) { $SkipNext = $false; continue }
     $arg = $ArgsList[$i]
     
-    # 1. Explicit Exclude Flag: --exclude / -exclude
+    # CASE 1: Explicit --exclude or -exclude flag
     if ($arg -eq "--exclude" -or $arg -eq "-exclude") {
         if ($i + 1 -lt $ArgsList.Count) {
-            $ExcludePaths.Add($ArgsList[$i+1].TrimStart("-"))
+            $path = $ArgsList[$i+1].TrimStart("-")
+            $ExcludePaths.Add($path)
             $SkipNext = $true
         }
         continue
     }
 
-    # 2. Pattern Exclusion: --*.Tests (Starts with --)
+    # CASE 2: Pattern Exclusion (--*.Tests)
+    # Must check StartsWith -- BUT ensure it's not exactly --exclude
     if ($arg.StartsWith("--")) {
-        $pat = $arg.Substring(2) # Strip --
+        $pat = $arg.Substring(2) # Strip leading --
         if (-not [string]::IsNullOrWhiteSpace($pat)) {
-            $ExcludePatterns.Add((Convert-GlobToRegex $pat))
+            $regex = Convert-GlobToRegex $pat
+            $ExcludePatterns.Add($regex)
+            # Debug log to verify pattern capture
+            Write-Host "  > Pattern Exclude: '$pat' -> RegEx: '$regex'" -ForegroundColor DarkGray
         }
         continue
     }
 
-    # 3. Extension Exclusion: -.md (Starts with -.)
+    # CASE 3: Extension Exclusion (-.md)
     if ($arg.StartsWith("-.")) {
-        $ext = $arg.Substring(2) # Strip -.
+        $ext = $arg.Substring(2) # Strip leading -.
         if (-not [string]::IsNullOrWhiteSpace($ext)) {
-            $ExcludePatterns.Add((Convert-GlobToRegex "*.$ext"))
+            $regex = Convert-GlobToRegex "*.$ext"
+            $ExcludePatterns.Add($regex)
+            Write-Host "  > Ext Exclude: '$ext'" -ForegroundColor DarkGray
         }
         continue
     }
 
-    # 4. Path Exclusion: -node_modules (Starts with -)
+    # CASE 4: Path Exclusion (-node_modules)
     if ($arg.StartsWith("-")) {
-        $path = $arg.Substring(1) # Strip -
+        $path = $arg.Substring(1) # Strip leading -
         if (-not [string]::IsNullOrWhiteSpace($path)) {
             $ExcludePaths.Add($path)
+            Write-Host "  > Path Exclude: '$path'" -ForegroundColor DarkGray
         }
         continue
     }
 
-    # 5. Presets/Extensions (No prefix)
+    # CASE 5: Presets/Extensions
     $val = $arg.ToLower().TrimStart(".")
     if ($PRESETS.ContainsKey($val)) {
         $PRESETS[$val] | ForEach-Object { $TargetExtensions.Add($_) }
@@ -125,7 +152,6 @@ for ($i = 0; $i -lt $ArgsList.Count; $i++) {
 # Normalize Exclude Paths
 $NormalizedExcludes = [System.Collections.Generic.List[string]]::new()
 foreach ($path in $ExcludePaths) {
-    # Unify separators to forward slash
     $clean = $path -replace '\\', '/'
     $clean = $clean -replace '^\./', ''
     $NormalizedExcludes.Add($clean)
@@ -150,7 +176,6 @@ $TotalBytes = 0
 $FileCount = 0
 $IsFilterActive = $TargetExtensions.Count -gt 0
 
-# Compile ignore regexes
 $RegexOpts = [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
 $IgnoreRe = [regex]::new("(package-lock\.json|yarn\.lock|Cargo\.lock|\.DS_Store|Thumbs\.db|\.git/|\.png$|\.jpg$|\.jpeg$|\.gif$|\.ico$|\.woff2?$|\.pdf$|\.exe$|\.bin$|\.pyc$|\.dll$|\.pdb$|\.min\.js$|\.min\.css$|\.meta$)", $RegexOpts)
 $SecRe = [regex]::new("(id_rsa|id_dsa|\.pem|\.key|\.p12|\.env|secrets|credentials)", $RegexOpts)
@@ -158,24 +183,19 @@ $SecRe = [regex]::new("(id_rsa|id_dsa|\.pem|\.key|\.p12|\.env|secrets|credential
 foreach ($FileEntry in $RawFiles) {
     if ([string]::IsNullOrWhiteSpace($FileEntry)) { continue }
 
-    # Normalize Path to relative Unix-style path
+    # Path Normalization: Standardize on relative path with forward slashes
     if ($FileEntry -match "^[A-Za-z]:") {
-        # It's an absolute Windows path (from Get-ChildItem)
         $RelPath = $FileEntry.Substring($RootPath.Length).Trim('\', '/')
     } else {
-        # It's already relative (from git)
         $RelPath = $FileEntry.Trim()
     }
-    # Force forward slashes for ALL regex/comparison logic
     $RelPath = $RelPath -replace '\\', '/'
 
     # --- FILTERS ---
-
-    # 1. Regex Bans
     if ($IgnoreRe.IsMatch($RelPath)) { continue }
     if ($SecRe.IsMatch($RelPath)) { continue }
 
-    # 2. Path Exclusions (Prefix Match)
+    # Path Exclusions
     $IsExcluded = $false
     foreach ($ex in $NormalizedExcludes) {
         if ($RelPath -eq $ex -or $RelPath.StartsWith("$ex/") -or $RelPath -like "*/$ex/*") {
@@ -184,8 +204,9 @@ foreach ($FileEntry in $RawFiles) {
     }
     if ($IsExcluded) { continue }
 
-    # 3. Pattern Exclusions (Regex Match)
+    # Pattern Exclusions
     foreach ($pat in $ExcludePatterns) {
+        # Use Regex match against normalized path
         if ($RelPath -match $pat) { 
             $IsExcluded = $true
             break 
@@ -193,7 +214,7 @@ foreach ($FileEntry in $RawFiles) {
     }
     if ($IsExcluded) { continue }
 
-    # 4. Extension Filter
+    # Extension Filter
     $Ext = [System.IO.Path]::GetExtension($RelPath).TrimStart('.')
     if ($IsFilterActive -and -not $TargetExtensions.Contains($Ext)) { continue }
 
