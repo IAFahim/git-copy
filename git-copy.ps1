@@ -1,7 +1,8 @@
 <#
 .SYNOPSIS
-    GIT-COPY | v17.5 | Professional Edition
+    GIT-COPY | v17.6 | Professional Edition
     Bundles code files into a single Markdown snippet and copies to clipboard.
+    Now using Native PowerShell Wildcards for robust filtering.
 #>
 
 [CmdletBinding()]
@@ -44,24 +45,11 @@ $LANG_MAP = @{
     "uss" = "css"; "uxml" = "xml"; "ps1" = "powershell"
 }
 
-# --- HELPERS ---
-function Convert-GlobToRegex {
-    param([string]$Pattern)
-    
-    # robust conversion: Escape everything, then restore wildcards
-    # We do NOT use ^ or $ anchors to allow matching anywhere in the path (standard exclude behavior)
-    $safe = [regex]::Escape($Pattern)
-    $safe = $safe -replace "\\\*", ".*" # Restore *
-    $safe = $safe -replace "\\\?", "."  # Restore ?
-    
-    return $safe
-}
-
 # --- MAIN ---
 $ArgsList = @($Arguments)
 
 if ($Help -or ($ArgsList -contains "--help") -or ($ArgsList -contains "-h")) {
-    Write-Host "GIT-COPY | v17.5" -ForegroundColor Cyan
+    Write-Host "GIT-COPY | v17.6" -ForegroundColor Cyan
     exit 0
 }
 
@@ -69,7 +57,6 @@ Write-Host "Processing..." -ForegroundColor Cyan
 
 # 1. PARSE ARGUMENTS
 $TargetExtensions = [System.Collections.Generic.List[string]]::new()
-$ExcludePaths     = [System.Collections.Generic.List[string]]::new()
 $ExcludePatterns  = [System.Collections.Generic.List[string]]::new()
 
 $SkipNext = $false
@@ -77,23 +64,23 @@ for ($i = 0; $i -lt $ArgsList.Count; $i++) {
     if ($SkipNext) { $SkipNext = $false; continue }
     $arg = $ArgsList[$i]
     
-    # CASE 1: Explicit --exclude or -exclude flag
+    # CASE 1: Explicit --exclude (Standard)
     if ($arg -eq "--exclude" -or $arg -eq "-exclude") {
         if ($i + 1 -lt $ArgsList.Count) {
             $path = $ArgsList[$i+1].TrimStart("-")
-            $ExcludePaths.Add($path)
+            $ExcludePatterns.Add($path)
             $SkipNext = $true
         }
         continue
     }
 
     # CASE 2: Pattern Exclusion (--*.Tests)
+    # This covers --Folder, --*.cs, --node_modules, etc.
     if ($arg.StartsWith("--")) {
         $pat = $arg.Substring(2) # Strip leading --
         if (-not [string]::IsNullOrWhiteSpace($pat)) {
-            $regex = Convert-GlobToRegex $pat
-            $ExcludePatterns.Add($regex)
-            Write-Host "  > Pattern Exclude: '$pat' -> RegEx: '$regex'" -ForegroundColor DarkGray
+            $ExcludePatterns.Add($pat)
+            Write-Host "  > Exclude Pattern: '$pat'" -ForegroundColor DarkGray
         }
         continue
     }
@@ -102,19 +89,18 @@ for ($i = 0; $i -lt $ArgsList.Count; $i++) {
     if ($arg.StartsWith("-.")) {
         $ext = $arg.Substring(2) # Strip leading -.
         if (-not [string]::IsNullOrWhiteSpace($ext)) {
-            $regex = Convert-GlobToRegex "*.$ext"
-            $ExcludePatterns.Add($regex)
-            Write-Host "  > Ext Exclude: '$ext'" -ForegroundColor DarkGray
+            $ExcludePatterns.Add("*.$ext")
+            Write-Host "  > Exclude Ext: '$ext'" -ForegroundColor DarkGray
         }
         continue
     }
 
-    # CASE 4: Path Exclusion (-node_modules)
+    # CASE 4: Old Style Path Exclusion (-node_modules)
     if ($arg.StartsWith("-")) {
         $path = $arg.Substring(1) # Strip leading -
         if (-not [string]::IsNullOrWhiteSpace($path)) {
-            $ExcludePaths.Add($path)
-            Write-Host "  > Path Exclude: '$path'" -ForegroundColor DarkGray
+            $ExcludePatterns.Add($path)
+            Write-Host "  > Exclude Path: '$path'" -ForegroundColor DarkGray
         }
         continue
     }
@@ -128,20 +114,11 @@ for ($i = 0; $i -lt $ArgsList.Count; $i++) {
     }
 }
 
-# Normalize Exclude Paths
-$NormalizedExcludes = [System.Collections.Generic.List[string]]::new()
-foreach ($path in $ExcludePaths) {
-    $clean = $path -replace '\\', '/'
-    $clean = $clean -replace '^\./', ''
-    $NormalizedExcludes.Add($clean)
-}
-
 # 2. DISCOVERY
 $RootPath = (Get-Location).Path
 $RawFiles = @()
 
 if (Test-Path ".git") {
-    # Ensure standard exclusion and error suppression
     $GitOut = git ls-files --cached --others --exclude-standard 2>$null
     if ($GitOut) { $RawFiles = $GitOut }
     else { $RawFiles = Get-ChildItem -Recurse -File | Select-Object -ExpandProperty FullName }
@@ -156,6 +133,7 @@ $TotalBytes = 0
 $FileCount = 0
 $IsFilterActive = $TargetExtensions.Count -gt 0
 
+# Security / Garbage Regex (Keep this for safety/noise)
 $RegexOpts = [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
 $IgnoreRe = [regex]::new("(package-lock\.json|yarn\.lock|Cargo\.lock|\.DS_Store|Thumbs\.db|\.git/|\.png$|\.jpg$|\.jpeg$|\.gif$|\.ico$|\.woff2?$|\.pdf$|\.exe$|\.bin$|\.pyc$|\.dll$|\.pdb$|\.min\.js$|\.min\.css$|\.meta$)", $RegexOpts)
 $SecRe = [regex]::new("(id_rsa|id_dsa|\.pem|\.key|\.p12|\.env|secrets|credentials)", $RegexOpts)
@@ -163,7 +141,7 @@ $SecRe = [regex]::new("(id_rsa|id_dsa|\.pem|\.key|\.p12|\.env|secrets|credential
 foreach ($FileEntry in $RawFiles) {
     if ([string]::IsNullOrWhiteSpace($FileEntry)) { continue }
 
-    # Path Normalization: Standardize on relative path with forward slashes
+    # Path Normalization
     if ($FileEntry -match "^[A-Za-z]:") {
         $RelPath = $FileEntry.Substring($RootPath.Length).Trim('\', '/')
     } else {
@@ -172,28 +150,40 @@ foreach ($FileEntry in $RawFiles) {
     $RelPath = $RelPath -replace '\\', '/'
 
     # --- FILTERS ---
+    
+    # 1. Base Ignorables
     if ($IgnoreRe.IsMatch($RelPath)) { continue }
     if ($SecRe.IsMatch($RelPath)) { continue }
 
-    # Path Exclusions (Exact match or folder match)
+    # 2. User Exclusions (The "Different Direction" Logic)
+    # We split path into segments and check wildcards against each segment.
+    # This mimics gitignore behavior for patterns like "*.Tests" or "node_modules".
     $IsExcluded = $false
-    foreach ($ex in $NormalizedExcludes) {
-        if ($RelPath -eq $ex -or $RelPath.StartsWith("$ex/") -or $RelPath -like "*/$ex/*") {
-            $IsExcluded = $true; break
-        }
-    }
-    if ($IsExcluded) { continue }
-
-    # Pattern Exclusions (Regex Contains)
+    $PathSegments = $RelPath -split '/'
+    
     foreach ($pat in $ExcludePatterns) {
-        if ($RelPath -match $pat) { 
+        # A. Check Segments (Matches "node_modules", "*.Tests", "bin")
+        foreach ($seg in $PathSegments) {
+            if ($seg -like $pat) { 
+                $IsExcluded = $true
+                break 
+            }
+        }
+        if ($IsExcluded) { break }
+
+        # B. Check Full Path (Matches "src/tests", "*/tests/*")
+        # Ensure we match subfolders if pattern is just a folder name but didn't match segment exactly above
+        # (e.g. pattern "test" should match "src/test/file.cs")
+        
+        # Standard Wildcard Check on Full Path
+        if ($RelPath -like $pat -or $RelPath -like "$pat/*" -or $RelPath -like "*/$pat/*") {
             $IsExcluded = $true
-            break 
+            break
         }
     }
     if ($IsExcluded) { continue }
 
-    # Extension Filter
+    # 3. Extension Filter
     $Ext = [System.IO.Path]::GetExtension($RelPath).TrimStart('.')
     if ($IsFilterActive -and -not $TargetExtensions.Contains($Ext)) { continue }
 
