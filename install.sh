@@ -227,17 +227,17 @@ echo -e "\033[0;36mProcessing...\033[0m" >&2
             $pattern_active = 1;
             @pattern_list = split(/\|/, $exclude_patterns);
             # Convert wildcard patterns to regex
-            for (@pattern_list) {
-                my $pat = $_;
-                # Don't escape dots - we want to match actual dots
+            my @converted = ();
+            foreach my $pat (@pattern_list) {
+                # Do not escape dots - we want to match actual dots
                 # Convert * to .* but handle the case where * is at the end specially
                 # For patterns like *.Tests, we want to match both "MyApp.Tests" and "MyFile.Tests.cs"
                 # So we use .* instead of \. for the * wildcard
-                $pat =~ s{\*}{.*}g;   # Convert * to .*
-                $pat =~ s{\?}{.}g;    # Convert ? to .
-                # Use substring match instead of full match
-                $_ = $pat;
+                $pat =~ s/\*/.*/g;   # Convert * to .*
+                $pat =~ s/\?/./g;    # Convert ? to .
+                push @converted, $pat;
             }
+            @pattern_list = @converted;
         }
 
         # Regex
