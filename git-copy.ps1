@@ -185,8 +185,8 @@ if ($ArgsList.Count -gt 0) {
 # Normalize exclude paths
 $NormalizedExcludes = @()
 foreach ($path in $ExcludePaths) {
-    $normalized = $path -replace "/", "\"
-    $normalized = $normalized.TrimStart('.\')
+    $normalized = $path -replace "\\", "/"
+    $normalized = $normalized.TrimStart('./')
     $NormalizedExcludes += $normalized
 }
 
@@ -197,8 +197,8 @@ $TotalBytes = 0
 $Count = 0
 
 foreach ($RelPath in $AllFiles) {
-    # Fix slashes for Windows
-    $RelPath = $RelPath -replace "/", "\"
+    # Normalize slashes to forward slash for consistency
+    $RelPath = $RelPath -replace "\\", "/"
     $FullPath = Join-Path $RootPath $RelPath
     $FileInfo = Get-Item $FullPath -ErrorAction SilentlyContinue
 
@@ -211,7 +211,9 @@ foreach ($RelPath in $AllFiles) {
     if ($ExcludeActive) {
         $shouldExclude = $false
         foreach ($excludePath in $NormalizedExcludes) {
-            if ($RelPath -like "$excludePath*" -or $RelPath -like "*\$excludePath\*" -or $RelPath -eq $excludePath) {
+            # Normalize exclude path too
+            $excludePath = $excludePath -replace "\\", "/"
+            if ($RelPath -like "$excludePath*" -or $RelPath -like "*/$excludePath/*" -or $RelPath -eq $excludePath) {
                 $shouldExclude = $true
                 break
             }
@@ -224,7 +226,7 @@ foreach ($RelPath in $AllFiles) {
         $shouldExclude = $false
         foreach ($pattern in $ExcludePatterns) {
             # Get all path segments (folders and file)
-            $pathSegments = $RelPath -split '\\'
+            $pathSegments = $RelPath -split '/'
             $matched = $false
 
             foreach ($segment in $pathSegments) {
