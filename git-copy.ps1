@@ -228,15 +228,16 @@ foreach ($RelPath in $AllFiles) {
     if ($PatternActive) {
         $shouldExclude = $false
         foreach ($pattern in $ExcludePatterns) {
-            # Convert wildcard pattern to regex robustly
-            # 1. Escape special regex characters (dots, brackets, etc.)
-            $safe = [regex]::Escape($pattern)
-            
-            # 2. Convert escaped wildcards back to regex wildcards
-            #    [regex]::Escape turns "*" into "\*" and "?" into "\?"
-            #    We use -replace (Regex-based) to turn "\*" back into ".*"
-            #    Use single quotes and 3 backslashes to match literal backslash+char in Regex mode
-            $regexPattern = $safe -replace '\\\*', '.*' -replace '\\\?', '.'
+            # ROBUST GLOB-TO-REGEX CONVERSION
+            # Construct the regex manually to avoid [regex]::Escape confusion with wildcards
+            $sb = [System.Text.StringBuilder]::new()
+            $chars = $pattern.ToCharArray()
+            foreach ($c in $chars) {
+                if ($c -eq '*') { [void]$sb.Append(".*") }
+                elseif ($c -eq '?') { [void]$sb.Append(".") }
+                else { [void]$sb.Append([regex]::Escape($c.ToString())) }
+            }
+            $regexPattern = $sb.ToString()
 
             # Get all path segments (folders and file)
             $pathSegments = $RelPath -split '/'
@@ -244,7 +245,7 @@ foreach ($RelPath in $AllFiles) {
 
             foreach ($segment in $pathSegments) {
                 # Case-insensitive match (PowerShell default)
-                # Unanchored match allows partial segment matches (e.g. *.Tests matches MyApp.Tests)
+                # Unanchored match allows partial segment matches (e.g. *.Tests matches Utils.Tests)
                 if ($segment -match $regexPattern) {
                     $matched = $true
                     break
