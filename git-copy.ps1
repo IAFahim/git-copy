@@ -1,36 +1,26 @@
 <#
 .SYNOPSIS
-    GIT-COPY | v17.1 | Professional Edition (Hotfix)
+    GIT-COPY | v17.2 | Professional Edition
     Bundles code files into a single Markdown snippet and copies to clipboard.
-
-.DESCRIPTION
-    A high-performance, cross-platform tool to aggregate code context for LLMs.
-    Respects .gitignore, handles binary exclusion, and secures secrets automatically.
 #>
 
 [CmdletBinding()]
 param(
     [Parameter(ValueFromRemainingArguments = $true)]
-    [string[]]$Arguments = @(), # Initialize to empty array to prevent strict mode crash
+    [string[]]$Arguments = @(),
 
     [Alias("h")]
     [switch]$Help
 )
 
-# -----------------------------------------------------------------------------
-# CONFIGURATION & CONSTANTS
-# -----------------------------------------------------------------------------
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = "Stop"
-
-# Force UTF-8 Output to prevent crashes with special characters/emojis
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-$OutputEncoding = [System.Text.Encoding]::UTF8
 
+# --- CONFIG ---
 $MAX_SIZE = 1MB
 $FENCE = '```' 
 
-# Preset Definitions
 $PRESETS = @{
     "web"     = @("html","htm","css","scss","sass","less","js","jsx","ts","tsx","json","svg","vue","svelte")
     "backend" = @("py","rb","php","pl","go","rs","java","cs","cpp","h","c","hpp","swift","kt","ex","exs","sh")
@@ -45,7 +35,6 @@ $PRESETS = @{
     "docs"    = @("md","txt","rst","adoc")
 }
 
-# Language Mapping
 $LANG_MAP = @{
     "js" = "javascript"; "ts" = "typescript"; "py" = "python";
     "cs" = "csharp"; "sh" = "bash"; "md" = "markdown";
@@ -54,47 +43,31 @@ $LANG_MAP = @{
     "uss" = "css"; "uxml" = "xml"; "ps1" = "powershell"
 }
 
-# Regex Compilations
-$RegexOptions = [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
-$IgnoreRegex   = [regex]::new("(package-lock\.json|yarn\.lock|Cargo\.lock|\.DS_Store|Thumbs\.db|\.git/|\.png$|\.jpg$|\.jpeg$|\.gif$|\.ico$|\.woff2?$|\.pdf$|\.exe$|\.bin$|\.pyc$|\.dll$|\.pdb$|\.min\.js$|\.min\.css$|\.meta$)", $RegexOptions)
-$SecurityRegex = [regex]::new("(id_rsa|id_dsa|\.pem|\.key|\.p12|\.env|secrets|credentials)", $RegexOptions)
-
-# -----------------------------------------------------------------------------
-# HELPER FUNCTIONS
-# -----------------------------------------------------------------------------
-function Show-Help {
-    Write-Host @"
-GIT-COPY | v17.1 | Professional Edition
-
-USAGE:
-    git copy [OPTIONS] [FILTERS] [EXCLUDES]
-
-EXAMPLES:
-    git copy                      # Copy all tracked files
-    git copy js                   # Copy only .js files
-    git copy web -node_modules    # Web files, excluding node_modules
-    git copy --*.Tests            # Exclude files/folders matching *.Tests
-    git copy -.md                 # Exclude .md extensions
-"@ -ForegroundColor Cyan
-    exit 0
-}
-
+# --- REGEX HELPERS ---
 function Convert-GlobToRegex {
     param([string]$Pattern)
-    $safe = [regex]::Escape($Pattern)
-    $safe = $safe -replace "\\\*", ".*" -replace "\\\?", "."
-    return "^.*$safe.*$" 
+    # Robust char-by-char conversion to avoid regex-replace confusion
+    $sb = [System.Text.StringBuilder]::new()
+    [void]$sb.Append("^.*") # Anchor start, allow leading path
+    
+    $chars = $Pattern.ToCharArray()
+    foreach ($c in $chars) {
+        if ($c -eq '*') { [void]$sb.Append(".*") }
+        elseif ($c -eq '?') { [void]$sb.Append(".") }
+        else { [void]$sb.Append([regex]::Escape($c.ToString())) }
+    }
+    
+    [void]$sb.Append(".*$") # Anchor end, allow trailing path/content
+    return $sb.ToString()
 }
 
-# -----------------------------------------------------------------------------
-# MAIN EXECUTION FLOW
-# -----------------------------------------------------------------------------
-
-# Force argument list to array to satisfy StrictMode in PS 5.1
+# --- MAIN ---
+# Force array to prevent StrictMode crash on empty input
 $ArgsList = @($Arguments)
 
 if ($Help -or ($ArgsList -contains "--help") -or ($ArgsList -contains "-h")) {
-    Show-Help
+    Write-Host "GIT-COPY | v17.2" -ForegroundColor Cyan
+    exit 0
 }
 
 Write-Host "Processing..." -ForegroundColor Cyan
@@ -104,44 +77,46 @@ $TargetExtensions = [System.Collections.Generic.List[string]]::new()
 $ExcludePaths     = [System.Collections.Generic.List[string]]::new()
 $ExcludePatterns  = [System.Collections.Generic.List[string]]::new()
 
-$IsFilterActive = $false
 $SkipNext = $false
-
 for ($i = 0; $i -lt $ArgsList.Count; $i++) {
     if ($SkipNext) { $SkipNext = $false; continue }
-    
     $arg = $ArgsList[$i]
     
-    switch -Regex ($arg) {
-        # explicit --exclude flag
-        "^--exclude$|^-exclude$" {
-            if ($i + 1 -lt $ArgsList.Count) {
-                $ExcludePaths.Add($ArgsList[$i+1].TrimStart("-"))
-                $SkipNext = $true
-            }
+    # explicit --exclude flag
+    if ($arg -match "^--exclude$|^-exclude$") {
+        if ($i + 1 -lt $ArgsList.Count) {
+            $ExcludePaths.Add($ArgsList[$i+1].TrimStart("-"))
+            $SkipNext = $true
         }
-        # Pattern exclusion: --*.Tests
-        "^--(?!exclude)(.+)" {
-            $Matches[1] | ForEach-Object { $ExcludePatterns.Add((Convert-GlobToRegex $_)) }
-        }
-        # Extension exclusion: -.md
-        "^-\.(.+)" {
-            $ExcludePatterns.Add((Convert-GlobToRegex "*.$($Matches[1])"))
-        }
-        # Path exclusion: -node_modules
-        "^-(.+)" {
-            $ExcludePaths.Add($Matches[1])
-        }
-        # Presets or Extensions
-        default {
-            $val = $arg.ToLower().TrimStart(".")
-            if ($PRESETS.ContainsKey($val)) {
-                $PRESETS[$val] | ForEach-Object { $TargetExtensions.Add($_) }
-            } else {
-                $TargetExtensions.Add($val)
-            }
-            $IsFilterActive = $true
-        }
+        continue
+    }
+
+    # Pattern exclusion: --*.Tests
+    if ($arg -match "^--(?!exclude)(.+)") {
+        $pat = $Matches[1]
+        $ExcludePatterns.Add((Convert-GlobToRegex $pat))
+        continue
+    }
+
+    # Extension exclusion: -.md
+    if ($arg -match "^-\.(.+)") {
+        $ext = $Matches[1]
+        $ExcludePatterns.Add((Convert-GlobToRegex "*.$ext"))
+        continue
+    }
+
+    # Path exclusion: -node_modules
+    if ($arg -match "^-(.+)") {
+        $ExcludePaths.Add($Matches[1])
+        continue
+    }
+
+    # Presets/Extensions
+    $val = $arg.ToLower().TrimStart(".")
+    if ($PRESETS.ContainsKey($val)) {
+        $PRESETS[$val] | ForEach-Object { $TargetExtensions.Add($_) }
+    } else {
+        $TargetExtensions.Add($val)
     }
 }
 
@@ -153,51 +128,45 @@ foreach ($path in $ExcludePaths) {
     $NormalizedExcludes.Add($clean)
 }
 
-# 2. FILE DISCOVERY
+# 2. DISCOVERY
 $RootPath = (Get-Location).Path
 $RawFiles = @()
 
 if (Test-Path ".git") {
-    try {
-        $GitOutput = git ls-files --cached --others --exclude-standard 2>$null
-        $RawFiles = $GitOutput
-    } catch {
-        Write-Warning "Git command failed, falling back to file system scan."
-        $RawFiles = Get-ChildItem -Recurse -File | Select-Object -ExpandProperty FullName
-    }
+    $GitOut = git ls-files --cached --others --exclude-standard 2>$null
+    if ($GitOut) { $RawFiles = $GitOut }
+    else { $RawFiles = Get-ChildItem -Recurse -File | Select-Object -ExpandProperty FullName }
 } else {
     $RawFiles = Get-ChildItem -Recurse -File | Select-Object -ExpandProperty FullName
 }
 
-# 3. PROCESSING ENGINE
+# 3. PROCESSING
 $OutputBuilder = [System.Text.StringBuilder]::new()
 $StructureList = [System.Collections.Generic.List[string]]::new()
 $TotalBytes = 0
 $FileCount = 0
+$IsFilterActive = $TargetExtensions.Count -gt 0
+
+# Compile ignore regexes
+$RegexOpts = [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
+$IgnoreRe = [regex]::new("(package-lock\.json|yarn\.lock|Cargo\.lock|\.DS_Store|Thumbs\.db|\.git/|\.png$|\.jpg$|\.jpeg$|\.gif$|\.ico$|\.woff2?$|\.pdf$|\.exe$|\.bin$|\.pyc$|\.dll$|\.pdb$|\.min\.js$|\.min\.css$|\.meta$)", $RegexOpts)
+$SecRe = [regex]::new("(id_rsa|id_dsa|\.pem|\.key|\.p12|\.env|secrets|credentials)", $RegexOpts)
 
 foreach ($FileEntry in $RawFiles) {
     if ([string]::IsNullOrWhiteSpace($FileEntry)) { continue }
 
-    # Normalize Path to relative Unix-style path
     if ($FileEntry -match "^[A-Za-z]:") {
-        # It's an absolute Windows path
         $RelPath = $FileEntry.Substring($RootPath.Length).Trim('\', '/')
     } else {
-        # It's already relative
         $RelPath = $FileEntry.Trim()
     }
-    
     $RelPath = $RelPath -replace '\\', '/'
-    
-    # --- FILTERS ---
-    
-    # 1. Regex Bans
-    if ($IgnoreRegex.IsMatch($RelPath)) { continue }
-    
-    # 2. Security Bans
-    if ($SecurityRegex.IsMatch($RelPath)) { continue }
 
-    # 3. Path Exclusions
+    # FILTERS
+    if ($IgnoreRe.IsMatch($RelPath)) { continue }
+    if ($SecRe.IsMatch($RelPath)) { continue }
+
+    # Path Exclusions
     $IsExcluded = $false
     foreach ($ex in $NormalizedExcludes) {
         if ($RelPath -eq $ex -or $RelPath.StartsWith("$ex/") -or $RelPath -like "*/$ex/*") {
@@ -206,18 +175,20 @@ foreach ($FileEntry in $RawFiles) {
     }
     if ($IsExcluded) { continue }
 
-    # 4. Pattern Exclusions
+    # Pattern Exclusions
     foreach ($pat in $ExcludePatterns) {
-        if ($RelPath -match $pat) { $IsExcluded = $true; break }
+        if ($RelPath -match $pat) { 
+            $IsExcluded = $true
+            break 
+        }
     }
     if ($IsExcluded) { continue }
 
-    # 5. Extension/Preset Filter
+    # Extension Filter
     $Ext = [System.IO.Path]::GetExtension($RelPath).TrimStart('.')
     if ($IsFilterActive -and -not $TargetExtensions.Contains($Ext)) { continue }
 
-    # --- CONTENT PROCESSING ---
-    
+    # Content
     $FullPath = Join-Path $RootPath $RelPath
     $FileInfo = Get-Item $FullPath -ErrorAction SilentlyContinue
     if (-not $FileInfo -or $FileInfo.Length -gt $MAX_SIZE -or $FileInfo.Length -eq 0) { continue }
@@ -235,31 +206,19 @@ foreach ($FileEntry in $RawFiles) {
         $StructureList.Add($RelPath)
         $TotalBytes += $FileInfo.Length
         $FileCount++
-    }
-    catch {
-        Write-Warning "Could not read file: $RelPath"
-    }
+    } catch {}
 }
 
-# 4. GENERATE FOOTER & STATS
+# 4. OUTPUT
 [void]$OutputBuilder.AppendLine("")
 [void]$OutputBuilder.AppendLine("_Project Structure:_")
 [void]$OutputBuilder.AppendLine("${FENCE}text")
 $StructureList.Sort()
-foreach ($Path in $StructureList) {
-    [void]$OutputBuilder.AppendLine($Path)
-}
+foreach ($Path in $StructureList) { [void]$OutputBuilder.AppendLine($Path) }
 [void]$OutputBuilder.AppendLine($FENCE)
 
 $FinalOutput = $OutputBuilder.ToString()
-
-# 5. CLIPBOARD & UI
-try {
-    Set-Clipboard -Value $FinalOutput
-} catch {
-    Write-Error "Failed to copy to clipboard."
-    exit 1
-}
+Set-Clipboard -Value $FinalOutput
 
 $Tokens = [math]::Truncate($TotalBytes / 4)
 if ($TotalBytes -lt 1KB) { $SizeStr = "{0} B" -f $TotalBytes }
