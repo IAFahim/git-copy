@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    GIT-COPY | v17.4 | Professional Edition
+    GIT-COPY | v17.5 | Professional Edition
     Bundles code files into a single Markdown snippet and copies to clipboard.
 #>
 
@@ -48,39 +48,20 @@ $LANG_MAP = @{
 function Convert-GlobToRegex {
     param([string]$Pattern)
     
-    # 1. Manual Builder to handle characters safely
-    $sb = [System.Text.StringBuilder]::new()
+    # robust conversion: Escape everything, then restore wildcards
+    # We do NOT use ^ or $ anchors to allow matching anywhere in the path (standard exclude behavior)
+    $safe = [regex]::Escape($Pattern)
+    $safe = $safe -replace "\\\*", ".*" # Restore *
+    $safe = $safe -replace "\\\?", "."  # Restore ?
     
-    # 2. Add leading wildcard match implicitly to allow "Contains" behavior
-    #    This ensures *.Tests matches MyApp.Tests (folder) AND Utils.Tests.cs (file)
-    [void]$sb.Append("^.*")
-    
-    foreach ($char in $Pattern.ToCharArray()) {
-        if ($char -eq '*') { 
-            # Glob * becomes Regex .*
-            [void]$sb.Append(".*") 
-        }
-        elseif ($char -eq '?') { 
-            # Glob ? becomes Regex .
-            [void]$sb.Append(".") 
-        }
-        else { 
-            # Escape all other chars (dots, brackets, etc)
-            [void]$sb.Append([regex]::Escape($char.ToString())) 
-        }
-    }
-    
-    # 3. Add trailing wildcard match implicitly
-    [void]$sb.Append(".*$")
-    
-    return $sb.ToString()
+    return $safe
 }
 
 # --- MAIN ---
 $ArgsList = @($Arguments)
 
 if ($Help -or ($ArgsList -contains "--help") -or ($ArgsList -contains "-h")) {
-    Write-Host "GIT-COPY | v17.4" -ForegroundColor Cyan
+    Write-Host "GIT-COPY | v17.5" -ForegroundColor Cyan
     exit 0
 }
 
@@ -107,13 +88,11 @@ for ($i = 0; $i -lt $ArgsList.Count; $i++) {
     }
 
     # CASE 2: Pattern Exclusion (--*.Tests)
-    # Must check StartsWith -- BUT ensure it's not exactly --exclude
     if ($arg.StartsWith("--")) {
         $pat = $arg.Substring(2) # Strip leading --
         if (-not [string]::IsNullOrWhiteSpace($pat)) {
             $regex = Convert-GlobToRegex $pat
             $ExcludePatterns.Add($regex)
-            # Debug log to verify pattern capture
             Write-Host "  > Pattern Exclude: '$pat' -> RegEx: '$regex'" -ForegroundColor DarkGray
         }
         continue
@@ -162,6 +141,7 @@ $RootPath = (Get-Location).Path
 $RawFiles = @()
 
 if (Test-Path ".git") {
+    # Ensure standard exclusion and error suppression
     $GitOut = git ls-files --cached --others --exclude-standard 2>$null
     if ($GitOut) { $RawFiles = $GitOut }
     else { $RawFiles = Get-ChildItem -Recurse -File | Select-Object -ExpandProperty FullName }
@@ -195,7 +175,7 @@ foreach ($FileEntry in $RawFiles) {
     if ($IgnoreRe.IsMatch($RelPath)) { continue }
     if ($SecRe.IsMatch($RelPath)) { continue }
 
-    # Path Exclusions
+    # Path Exclusions (Exact match or folder match)
     $IsExcluded = $false
     foreach ($ex in $NormalizedExcludes) {
         if ($RelPath -eq $ex -or $RelPath.StartsWith("$ex/") -or $RelPath -like "*/$ex/*") {
@@ -204,9 +184,8 @@ foreach ($FileEntry in $RawFiles) {
     }
     if ($IsExcluded) { continue }
 
-    # Pattern Exclusions
+    # Pattern Exclusions (Regex Contains)
     foreach ($pat in $ExcludePatterns) {
-        # Use Regex match against normalized path
         if ($RelPath -match $pat) { 
             $IsExcluded = $true
             break 
