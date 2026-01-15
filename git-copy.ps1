@@ -7,10 +7,12 @@
 param(
     [Parameter(ValueFromRemainingArguments = $true)]
     [string[]]$ArgsList,
-    
+
     [Alias("exclude")]
     [string[]]$ExcludePaths = @(),
-    
+
+    [string[]]$ExcludePatterns = @(),
+
     [switch]$Help
 )
 
@@ -50,6 +52,13 @@ EXCLUDES:
                         Note: Use quotes for paths with spaces (e.g., -"my folder")
     --exclude <path>    Alternative exclude syntax
 
+PATTERN EXCLUDES:
+    --<pattern>         Exclude folders/files matching wildcard pattern
+                        Examples: --*.Tests --test* --*.tmp
+                        Matches: MyApp.Tests/, test.cs, test_backup/, file.tmp
+    -.extension         Exclude files by extension (e.g., -.md -.log)
+                        Note: Use quotes for patterns with spaces (e.g., --"test *")
+
 EXAMPLES:
     git copy                              Copy all tracked files
     git copy js                           Copy only .js files
@@ -58,6 +67,9 @@ EXAMPLES:
     git copy js -tests                    Copy .js files, exclude tests folder
     git copy web -dist -build             Copy web files, exclude build folders
     git copy --exclude src/legacy         Exclude specific path
+    git copy --*.Tests                    Exclude all .Tests folders/files
+    git copy -.md                         Exclude all markdown files
+    git copy --test* -*.tmp               Exclude test* folders and *.tmp files
 
 "@ -ForegroundColor Cyan
     exit 0
@@ -117,6 +129,7 @@ if (Test-Path ".git") {
 $FilterExtensions = @()
 $FilterActive = $false
 $ExcludeActive = $ExcludePaths.Count -gt 0
+$PatternActive = $false
 
 if ($ArgsList.Count -gt 0) {
     $FilterActive = $true
@@ -125,14 +138,30 @@ if ($ArgsList.Count -gt 0) {
         if ($arg -eq "--exclude" -or $arg -eq "-exclude") {
             continue
         }
-        # Check if it's an exclude path (starts with -)
+        # Check if it's a pattern (starts with --)
+        if ($arg -match "^--") {
+            $pattern = $arg.TrimStart('-')
+            if ($pattern.Trim() -ne "") {
+                $ExcludePatterns += $pattern
+                $PatternActive = $true
+            }
+            continue
+        }
+        # Check if it's an extension exclusion (starts with -. )
+        if ($arg -match "^-\.") {
+            $ext = $arg.TrimStart('-.')
+            $ExcludePatterns += "*.$ext"
+            $PatternActive = $true
+            continue
+        }
+        # Check if it's an exclude path (starts with - but not -.)
         if ($arg -match "^-") {
             $path = $arg.TrimStart('-')
             $ExcludePaths += $path
             $ExcludeActive = $true
             continue
         }
-        
+
         $arg = $arg.ToLower()
         if ($Presets.ContainsKey($arg)) {
             $FilterExtensions += $Presets[$arg]
@@ -172,6 +201,32 @@ foreach ($RelPath in $AllFiles) {
         $shouldExclude = $false
         foreach ($excludePath in $NormalizedExcludes) {
             if ($RelPath -like "$excludePath*" -or $RelPath -like "*\$excludePath\*" -or $RelPath -eq $excludePath) {
+                $shouldExclude = $true
+                break
+            }
+        }
+        if ($shouldExclude) { continue }
+    }
+
+    # Check pattern excludes (wildcard matching on folder/file names)
+    if ($PatternActive) {
+        $shouldExclude = $false
+        foreach ($pattern in $ExcludePatterns) {
+            # Get all path segments (folders and file)
+            $pathSegments = $RelPath -split '\\'
+            $matched = $false
+
+            foreach ($segment in $pathSegments) {
+                # Convert wildcard pattern to regex for substring matching
+                # *.Tests should match both "MyApp.Tests" and "MyFile.Tests.cs"
+                $regexPattern = $pattern -replace '\*', '.*' -replace '\?', '.'
+                if ($segment -match $regexPattern) {
+                    $matched = $true
+                    break
+                }
+            }
+
+            if ($matched) {
                 $shouldExclude = $true
                 break
             }

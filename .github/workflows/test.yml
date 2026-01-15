@@ -23,10 +23,19 @@ jobs:
         shell: powershell
         run: |
           New-Item -ItemType Directory -Force -Path "TestProject"
+          # Main files
           "public class PlayerController : MonoBehaviour {}" | Set-Content "TestProject/Player.cs"
           "guid: 12345" | Set-Content "TestProject/Player.cs.meta"
           "SECRET_KEY=123" | Set-Content "TestProject/.env"
           "node_modules stuff" | Set-Content "TestProject/package-lock.json"
+
+          # Pattern exclusion test fixtures
+          New-Item -ItemType Directory -Force -Path "TestProject/MyApp.Tests"
+          "public class TestClass {}" | Set-Content "TestProject/MyApp.Tests/UnitTest.cs"
+          "public class UtilsTest {}" | Set-Content "TestProject/Utils.Tests.cs"
+          "# Test File" | Set-Content "TestProject/README.md"
+          "# Docs" | Set-Content "TestProject/docs/guide.md"
+          "test content" | Set-Content "TestProject/test_file.cs"
 
       - name: Run Tool & Verify
         shell: powershell
@@ -74,11 +83,73 @@ jobs:
             $TestPassed = $false 
           }
 
-          if ($TestPassed) { 
-            Write-Host "[PASS] Windows Tests Passed" -ForegroundColor Green 
+          if ($TestPassed) {
+            Write-Host "[PASS] Windows Tests Passed" -ForegroundColor Green
           } else {
             exit 1
           }
+
+      - name: Test Pattern Exclusion Feature
+        shell: powershell
+        run: |
+          # Test 1: --*.Tests pattern
+          Write-Host "Testing pattern: --*.Tests"
+          function Set-Clipboard {
+              param([Parameter(ValueFromPipeline=$true)]$Value)
+              $Value | Set-Content "clipboard_pattern1.md"
+          }
+          cd TestProject
+          & ..\git-copy.ps1 --*.Tests
+
+          $Output1 = Get-Content "clipboard_pattern1.md" -Raw
+
+          # Should NOT contain .Tests files/folders
+          if ($Output1 -match "MyApp.Tests" -or $Output1 -match "Utils.Tests.cs") {
+            Write-Error "FAIL: Pattern --*.Tests did not exclude test files."
+            exit 1
+          }
+          # Should still contain normal files
+          if ($Output1 -notmatch "Player.cs") {
+            Write-Error "FAIL: Pattern --*.Tests excluded normal files."
+            exit 1
+          }
+          Write-Host "PASS: --*.Tests pattern works correctly" -ForegroundColor Green
+
+          # Test 2: -.md extension exclusion
+          Write-Host "Testing pattern: -.md"
+          function Set-Clipboard {
+              param([Parameter(ValueFromPipeline=$true)]$Value)
+              $Value | Set-Content "clipboard_pattern2.md"
+          }
+          & ..\git-copy.ps1 -.md
+
+          $Output2 = Get-Content "clipboard_pattern2.md" -Raw
+
+          # Should NOT contain .md files
+          if ($Output2 -match "README.md" -or $Output2 -match "guide.md") {
+            Write-Error "FAIL: Pattern -.md did not exclude markdown files."
+            exit 1
+          }
+          Write-Host "PASS: -.md pattern works correctly" -ForegroundColor Green
+
+          # Test 3: Multiple patterns --*.Tests -.md
+          Write-Host "Testing multiple patterns: --*.Tests -.md"
+          function Set-Clipboard {
+              param([Parameter(ValueFromPipeline=$true)]$Value)
+              $Value | Set-Content "clipboard_pattern3.md"
+          }
+          & ..\git-copy.ps1 --*.Tests -.md
+
+          $Output3 = Get-Content "clipboard_pattern3.md" -Raw
+
+          # Should NOT contain .Tests OR .md files
+          if ($Output3 -match "MyApp.Tests" -or $Output3 -match "Utils.Tests.cs" -or $Output3 -match "README.md") {
+            Write-Error "FAIL: Multiple patterns did not work correctly."
+            exit 1
+          }
+          Write-Host "PASS: Multiple patterns work correctly" -ForegroundColor Green
+
+          Write-Host "[PASS] All Pattern Exclusion Tests Passed" -ForegroundColor Green
 
       - name: Create Report
         if: always()
@@ -107,10 +178,20 @@ jobs:
         run: |
           mkdir TestProject
           cd TestProject
+          # Main files
           echo "public class PlayerController : MonoBehaviour {}" > Player.cs
           echo "guid: 12345" > Player.cs.meta
           echo "SECRET_KEY=123" > .env
           echo "garbage" > package-lock.json
+
+          # Pattern exclusion test fixtures
+          mkdir -p MyApp.Tests
+          echo "public class TestClass {}" > MyApp.Tests/UnitTest.cs
+          echo "public class UtilsTest {}" > Utils.Tests.cs
+          echo "# Test File" > README.md
+          echo "# Docs" > docs/guide.md
+          echo "test content" > test_file.cs
+
           # Initialize git to test git-aware features
           git init
           git config --global user.email "you@example.com"
@@ -186,6 +267,59 @@ jobs:
           fi
 
           if [ $FAILED -eq 1 ]; then exit 1; fi
+
+      - name: Test Pattern Exclusion Feature
+        run: |
+          # Add mocks to path
+          export PATH="$HOME/bin:$PATH"
+
+          cd TestProject
+
+          # Test 1: --*.Tests pattern
+          echo "Testing pattern: --*.Tests"
+          /usr/local/bin/git-copy --*.Tests
+
+          OUTPUT1=$(cat $HOME/mock_clipboard.txt)
+
+          # Should NOT contain .Tests files/folders
+          if echo "$OUTPUT1" | grep -q "MyApp.Tests\|Utils.Tests.cs"; then
+            echo "❌ FAIL: Pattern --*.Tests did not exclude test files."
+            exit 1
+          fi
+          # Should still contain normal files
+          if ! echo "$OUTPUT1" | grep -q "Player.cs"; then
+            echo "❌ FAIL: Pattern --*.Tests excluded normal files."
+            exit 1
+          fi
+          echo "✅ PASS: --*.Tests pattern works correctly"
+
+          # Test 2: -.md extension exclusion
+          echo "Testing pattern: -.md"
+          /usr/local/bin/git-copy -.md
+
+          OUTPUT2=$(cat $HOME/mock_clipboard.txt)
+
+          # Should NOT contain .md files
+          if echo "$OUTPUT2" | grep -q "README.md\|guide.md"; then
+            echo "❌ FAIL: Pattern -.md did not exclude markdown files."
+            exit 1
+          fi
+          echo "✅ PASS: -.md pattern works correctly"
+
+          # Test 3: Multiple patterns --*.Tests -.md
+          echo "Testing multiple patterns: --*.Tests -.md"
+          /usr/local/bin/git-copy --*.Tests -.md
+
+          OUTPUT3=$(cat $HOME/mock_clipboard.txt)
+
+          # Should NOT contain .Tests OR .md files
+          if echo "$OUTPUT3" | grep -q "MyApp.Tests\|Utils.Tests.cs\|README.md"; then
+            echo "❌ FAIL: Multiple patterns did not work correctly."
+            exit 1
+          fi
+          echo "✅ PASS: Multiple patterns work correctly"
+
+          echo "✅ [PASS] All Pattern Exclusion Tests Passed"
 
       - name: Create Report
         if: always()

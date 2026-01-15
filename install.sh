@@ -65,6 +65,13 @@ EXCLUDES:
                         Note: Use quotes for paths with spaces (e.g., -"my folder")
     --exclude <path>    Alternative exclude syntax
 
+PATTERN EXCLUDES:
+    --<pattern>         Exclude folders/files matching wildcard pattern
+                        Examples: --*.Tests --test* --*.tmp
+                        Matches: MyApp.Tests/, test.cs, test_backup/, file.tmp
+    -.extension         Exclude files by extension (e.g., -.md -.log)
+                        Note: Use quotes for patterns with spaces (e.g., --"test *")
+
 EXAMPLES:
     git copy                              Copy all tracked files
     git copy js                           Copy only .js files
@@ -73,6 +80,9 @@ EXAMPLES:
     git copy js -tests                    Copy .js files, exclude tests folder
     git copy web -dist -build             Copy web files, exclude build folders
     git copy --exclude src/legacy         Exclude specific path
+    git copy --*.Tests                    Exclude all .Tests folders/files
+    git copy -.md                         Exclude all markdown files
+    git copy --test* -*.tmp               Exclude test* folders and *.tmp files
 
 HELP_EOF
     exit 0
@@ -88,9 +98,10 @@ done
 # --- CONFIG ---
 MAX_SIZE=1048576
 
-# Parse arguments - separate exclude paths from filter args
+# Parse arguments - separate exclude paths, patterns, and filter args
 FILTER_ARGS=""
 EXCLUDE_PATHS=""
+EXCLUDE_PATTERNS=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -100,6 +111,21 @@ while [[ $# -gt 0 ]]; do
                 EXCLUDE_PATHS="${EXCLUDE_PATHS}${EXCLUDE_PATHS:+|}$1"
                 shift
             fi
+            ;;
+        --*)
+            # Pattern exclude syntax: --*.Tests, --test*
+            pattern="${1#--}"
+            # Check if pattern is not empty (after trimming whitespace)
+            if [[ -n "${pattern// /}" ]]; then
+                EXCLUDE_PATTERNS="${EXCLUDE_PATTERNS}${EXCLUDE_PATTERNS:+|}$pattern"
+            fi
+            shift
+            ;;
+        -\.*)
+            # Extension exclude syntax: -.md
+            ext="${1#-\.}"
+            EXCLUDE_PATTERNS="${EXCLUDE_PATTERNS}${EXCLUDE_PATTERNS:+|}*.$ext"
+            shift
             ;;
         -*)
             # Check if it looks like a path (contains / or is a valid folder name)
@@ -122,6 +148,7 @@ done
 # Pass arguments to Perl via ENV
 export GIT_COPY_ARGS="$FILTER_ARGS"
 export GIT_COPY_EXCLUDE="$EXCLUDE_PATHS"
+export GIT_COPY_PATTERNS="$EXCLUDE_PATTERNS"
 
 # --- EXECUTION ---
 TMP_DIR=$(mktemp -d 2>/dev/null || mktemp -d -t 'git-copy')
@@ -180,7 +207,7 @@ echo -e "\033[0;36mProcessing...\033[0m" >&2
         $exclude_paths = $ENV{GIT_COPY_EXCLUDE};
         $exclude_active = 0;
         @exclude_list = ();
-        
+
         if ($exclude_paths ne "") {
             $exclude_active = 1;
             @exclude_list = split(/\|/, $exclude_paths);
@@ -188,6 +215,28 @@ echo -e "\033[0;36mProcessing...\033[0m" >&2
             for (@exclude_list) {
                 s{^\.?/+}{};
                 s{/+$}{};
+            }
+        }
+
+        # --- EXCLUDE PATTERNS ---
+        $exclude_patterns = $ENV{GIT_COPY_PATTERNS};
+        $pattern_active = 0;
+        @pattern_list = ();
+
+        if ($exclude_patterns ne "") {
+            $pattern_active = 1;
+            @pattern_list = split(/\|/, $exclude_patterns);
+            # Convert wildcard patterns to regex
+            for (@pattern_list) {
+                my $pat = $_;
+                # Don't escape dots - we want to match actual dots
+                # Convert * to .* but handle the case where * is at the end specially
+                # For patterns like *.Tests, we want to match both "MyApp.Tests" and "MyFile.Tests.cs"
+                # So we use .* instead of \. for the * wildcard
+                $pat =~ s{\*}{.*}g;   # Convert * to .*
+                $pat =~ s{\?}{.}g;    # Convert ? to .
+                # Use substring match instead of full match
+                $_ = $pat;
             }
         }
 
@@ -221,6 +270,24 @@ echo -e "\033[0;36mProcessing...\033[0m" >&2
                 $should_exclude = 1;
                 last;
             }
+        }
+        next if $should_exclude;
+    }
+
+    # Check pattern excludes (wildcard matching on folder/file names)
+    if ($pattern_active) {
+        $should_exclude = 0;
+        # Split path into segments
+        my @segments = split(/\//, $f);
+        foreach my $pattern (@pattern_list) {
+            foreach my $segment (@segments) {
+                # Pattern is already a regex, use it for substring matching
+                if ($segment =~ /$pattern/i) {
+                    $should_exclude = 1;
+                    last;
+                }
+            }
+            last if $should_exclude;
         }
         next if $should_exclude;
     }
