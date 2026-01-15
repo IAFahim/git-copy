@@ -228,10 +228,12 @@ foreach ($RelPath in $AllFiles) {
             # Convert wildcard pattern to regex
             # 1. Escape special regex characters (dots, brackets, etc.)
             $safe = [regex]::Escape($pattern)
+            
             # 2. Convert escaped wildcards back to regex wildcards
-            #    \* -> .* (match any sequence)
-            #    \? -> .  (match any single char)
-            $regexPattern = $safe -replace "\\\*", ".*" -replace "\\\?", "."
+            #    Regex Escape turns "*" into "\*" and "?" into "\?".
+            #    We want to turn "\*" back into ".*" (regex wildcard)
+            #    We use String.Replace instead of -replace to avoid regex engine backslash ambiguity
+            $regexPattern = $safe.Replace("\*", ".*").Replace("\?", ".")
 
             # Get all path segments (folders and file)
             $pathSegments = $RelPath -split '/'
