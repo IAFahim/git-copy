@@ -231,8 +231,11 @@ foreach ($RelPath in $AllFiles) {
 
             foreach ($segment in $pathSegments) {
                 # Convert wildcard pattern to regex for substring matching
-                # *.Tests should match both "MyApp.Tests" and "MyFile.Tests.cs"
-                $regexPattern = $pattern -replace '\*', '.*' -replace '\?', '.'
+                # 1. Escape special chars to avoid regex errors (e.g. dots in filenames)
+                $safe = [regex]::Escape($pattern)
+                # 2. Convert wildcards: * -> .*, ? -> .
+                $regexPattern = $safe -replace "\\\*", ".*" -replace "\\\?", "."
+                
                 if ($segment -match $regexPattern) {
                     $matched = $true
                     break
