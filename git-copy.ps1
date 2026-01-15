@@ -8,17 +8,16 @@ param(
     [Parameter(ValueFromRemainingArguments = $true)]
     [string[]]$ArgsList,
 
-    [Alias("exclude")]
-    [string[]]$ExcludePaths = @(),
-
-    [string[]]$ExcludePatterns = @(),
-
     [switch]$Help
 )
 
 $ErrorActionPreference = "Stop"
 # Force UTF8 to prevent console crashes on special chars
 $OutputEncoding = [System.Text.Encoding]::UTF8
+
+# Initialize variables that were previously parameters
+$ExcludePaths = @()
+$ExcludePatterns = @()
 
 if ($Help -or $ArgsList -contains "--help" -or $ArgsList -contains "-h") {
     Write-Host @"
@@ -132,30 +131,41 @@ $ExcludeActive = $ExcludePaths.Count -gt 0
 $PatternActive = $false
 
 if ($ArgsList.Count -gt 0) {
-    foreach ($arg in $ArgsList) {
-        # Check for --exclude flag
+    for ($i = 0; $i -lt $ArgsList.Count; $i++) {
+        $arg = $ArgsList[$i]
+
+        # Check for --exclude flag (consume next arg)
         if ($arg -eq "--exclude" -or $arg -eq "-exclude") {
+            if ($i + 1 -lt $ArgsList.Count) {
+                $ExcludePaths += $ArgsList[++$i]
+                $ExcludeActive = $true
+            }
             continue
         }
+
         # Check if it's a pattern (starts with --)
         if ($arg -match "^--") {
-            $pattern = $arg.TrimStart('-')
+            # Match Bash behavior: remove leading --
+            $pattern = $arg -replace "^--", ""
             if ($pattern.Trim() -ne "") {
                 $ExcludePatterns += $pattern
                 $PatternActive = $true
             }
             continue
         }
+
         # Check if it's an extension exclusion (starts with -. )
         if ($arg -match "^-\.") {
-            $ext = $arg.TrimStart('-.')
+            # Match Bash behavior: remove leading -.
+            $ext = $arg -replace "^-\.", ""
             $ExcludePatterns += "*.$ext"
             $PatternActive = $true
             continue
         }
+
         # Check if it's an exclude path (starts with - but not -.)
         if ($arg -match "^-") {
-            $path = $arg.TrimStart('-')
+            $path = $arg -replace "^-", ""
             $ExcludePaths += $path
             $ExcludeActive = $true
             continue
