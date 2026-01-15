@@ -185,7 +185,7 @@ if ($ArgsList.Count -gt 0) {
 # Normalize exclude paths
 $NormalizedExcludes = @()
 foreach ($path in $ExcludePaths) {
-    $normalized = $path -replace "\\", "/"
+    $normalized = $path -replace '\\', '/'
     $normalized = $normalized.TrimStart('./')
     $NormalizedExcludes += $normalized
 }
@@ -198,7 +198,7 @@ $Count = 0
 
 foreach ($RelPath in $AllFiles) {
     # Normalize slashes to forward slash for consistency
-    $RelPath = $RelPath -replace "\\", "/"
+    $RelPath = $RelPath -replace '\\', '/'
     $FullPath = Join-Path $RootPath $RelPath
     $FileInfo = Get-Item $FullPath -ErrorAction SilentlyContinue
 
@@ -212,7 +212,7 @@ foreach ($RelPath in $AllFiles) {
         $shouldExclude = $false
         foreach ($excludePath in $NormalizedExcludes) {
             # Normalize exclude path too
-            $excludePath = $excludePath -replace "\\", "/"
+            $excludePath = $excludePath -replace '\\', '/'
             if ($RelPath -like "$excludePath*" -or $RelPath -like "*/$excludePath/*" -or $RelPath -eq $excludePath) {
                 $shouldExclude = $true
                 break
