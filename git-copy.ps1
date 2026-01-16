@@ -55,8 +55,6 @@ if ($Help -or ($ArgsList -contains "--help") -or ($ArgsList -contains "-h")) {
     exit 0
 }
 
-Write-Host "Processing..." -ForegroundColor Cyan
-
 # 1. PARSE ARGUMENTS
 $TargetExtensions = [System.Collections.Generic.List[string]]::new()
 $ExcludePatterns  = [System.Collections.Generic.List[string]]::new()
@@ -83,7 +81,6 @@ for ($i = 0; $i -lt $ArgsList.Count; $i++) {
         $pat = $arg.Substring(2) # Strip leading --
         if (-not [string]::IsNullOrWhiteSpace($pat)) {
             $ExcludePatterns.Add($pat)
-            Write-Host "  > Exclude Pattern: '$pat'" -ForegroundColor DarkGray
         }
         continue
     }
@@ -93,7 +90,6 @@ for ($i = 0; $i -lt $ArgsList.Count; $i++) {
         $ext = $arg.Substring(2) # Strip leading -.
         if (-not [string]::IsNullOrWhiteSpace($ext)) {
             $ExcludePatterns.Add("*.$ext")
-            Write-Host "  > Exclude Ext: '$ext'" -ForegroundColor DarkGray
         }
         continue
     }
@@ -104,7 +100,6 @@ for ($i = 0; $i -lt $ArgsList.Count; $i++) {
         if (-not [string]::IsNullOrWhiteSpace($path)) {
             $path = $path -replace '\\', '/'
             $ExcludePatterns.Add($path)
-            Write-Host "  > Exclude Path: '$path'" -ForegroundColor DarkGray
         }
         continue
     }
@@ -167,16 +162,10 @@ foreach ($FileEntry in $RawFiles) {
     $IsExcluded = $false
     $PathSegments = $RelPath -split '/'
     
-    # DEBUG LOGGING (Conditional)
-    if ($ExcludePatterns.Count -gt 0 -and ($RelPath -match "Test" -or $RelPath -match "node_modules")) {
-         Write-Host "DEBUG: Checking '$RelPath' (Segments: $($PathSegments -join ','))" -ForegroundColor Gray
-    }
-
     foreach ($pat in $ExcludePatterns) {
         # 1. Full Path Check
         if ($RelPath -like $pat -or $RelPath -like "$pat/*") {
             $IsExcluded = $true
-            Write-Host "  > EXCLUDED by FullPath match: '$pat'" -ForegroundColor Yellow
             break
         }
 
@@ -185,14 +174,7 @@ foreach ($FileEntry in $RawFiles) {
             # STRICT MATCH
             if ($seg -like $pat) {
                 $IsExcluded = $true
-                Write-Host "  > EXCLUDED by Segment Strict match: '$seg' -like '$pat'" -ForegroundColor Yellow
                 break
-            }
-            # FUZZY/CONTAINMENT MATCH
-            if ($seg -like "*$pat*") {
-                 $IsExcluded = $true
-                 Write-Host "  > EXCLUDED by Segment Fuzzy match: '$seg' -like '*$pat*'" -ForegroundColor Yellow
-                 break
             }
         }
         if ($IsExcluded) { break }

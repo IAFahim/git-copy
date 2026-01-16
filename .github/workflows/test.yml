@@ -94,13 +94,13 @@ jobs:
         shell: powershell
         run: |
           # Test 1: --*.Tests pattern
-          Write-Host "Testing pattern: --*.Tests"
+          Write-Host "Testing pattern: --*.Tests*"
           function Set-Clipboard {
               param([Parameter(ValueFromPipeline=$true)]$Value)
               $Value | Set-Content "clipboard_pattern1.md"
           }
           cd TestProject
-          & ..\git-copy.ps1 --*.Tests
+          & ..\git-copy.ps1 --*.Tests*
 
           $Output1 = Get-Content "clipboard_pattern1.md" -Raw
 
@@ -134,12 +134,12 @@ jobs:
           Write-Host "PASS: -.md pattern works correctly" -ForegroundColor Green
 
           # Test 3: Multiple patterns --*.Tests -.md
-          Write-Host "Testing multiple patterns: --*.Tests -.md"
+          Write-Host "Testing multiple patterns: --*.Tests* -.md"
           function Set-Clipboard {
               param([Parameter(ValueFromPipeline=$true)]$Value)
               $Value | Set-Content "clipboard_pattern3.md"
           }
-          & ..\git-copy.ps1 --*.Tests -.md
+          & ..\git-copy.ps1 --*.Tests* -.md
 
           $Output3 = Get-Content "clipboard_pattern3.md" -Raw
 
