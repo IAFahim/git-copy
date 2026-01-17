@@ -71,10 +71,11 @@ jobs:
           "SECRET_KEY=123" | Set-Content "TestProject/.env"
           "node_modules stuff" | Set-Content "TestProject/package-lock.json"
 
-          # Mock clipboard
+          # Mock clipboard - use absolute path
+          $OutputPath = "$PWD\TestProject\clipboard_output.md"
           function Set-Clipboard {
               param([Parameter(ValueFromPipeline=$true)]$Value)
-              $Value | Set-Content "TestProject/clipboard_output.md"
+              $Value | Set-Content $OutputPath
           }
 
           # Run tool
@@ -82,12 +83,12 @@ jobs:
           & ..\git-copy.ps1 unity
 
           # Verify output
-          if (-not (Test-Path "clipboard_output.md")) {
-            Write-Error "FAIL: No output created"
+          if (-not (Test-Path $OutputPath)) {
+            Write-Error "FAIL: No output created at $OutputPath"
             exit 1
           }
 
-          $Output = Get-Content "clipboard_output.md" -Raw
+          $Output = Get-Content $OutputPath -Raw
 
           # Assertions
           if ($Output -notmatch "Player.cs") {
