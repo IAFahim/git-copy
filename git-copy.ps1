@@ -346,6 +346,58 @@ foreach ($Path in $StructureList) { [void]$OutputBuilder.AppendLine($Path) }
 
 $FinalOutput = $OutputBuilder.ToString()
 
+# Cross-platform clipboard support
+function Set-ClipboardCrossPlatform {
+    param([string]$Value)
+
+    $IsLinuxOS = $PSVersionTable.Platform -eq 'Unix'
+    $IsWindowsOS = $PSVersionTable.Platform -eq 'Win32NT' -or $null -eq $PSVersionTable.Platform
+
+    # Check if there's a mocked Set-Clipboard (for testing)
+    $MockedClipboard = Get-Command Set-Clipboard -Scope Global -ErrorAction SilentlyContinue
+
+    if ($IsWindowsOS -or $MockedClipboard) {
+        Set-Clipboard -Value $Value
+    }
+    elseif ($IsLinuxOS) {
+        # Try Wayland clipboard first, then X11
+        $WaylandCopy = Get-Command wl-copy -ErrorAction SilentlyContinue
+        $XClip = Get-Command xclip -ErrorAction SilentlyContinue
+
+        $CopySuccess = $false
+        if ($WaylandCopy) {
+            try {
+                $Value | wl-copy
+                $CopySuccess = $true
+            } catch {
+                # Fall through to xclip
+            }
+        }
+
+        if (-not $CopySuccess -and $XClip) {
+            try {
+                $Value | xclip -selection clipboard 2>$null
+                $CopySuccess = $true
+            } catch {
+                Write-Error "Failed to set clipboard with xclip: $_"
+                exit 1
+            }
+        }
+
+        if (-not $CopySuccess) {
+            Write-Error "No clipboard tool found. Please install xclip or wl-copy."
+            exit 1
+        }
+    }
+}
+
+try {
+    Set-ClipboardCrossPlatform -Value $FinalOutput
+} catch {
+    Write-Error "Failed to set clipboard: $_"
+    exit 1
+}
+
 $Tokens = [math]::Truncate($TotalBytes / 4)
 if ($TotalBytes -lt 1KB) { $SizeStr = "{0} B" -f $TotalBytes }
 elseif ($TotalBytes -lt 1MB) { $SizeStr = "{0:N2} KB" -f ($TotalBytes / 1KB) }
