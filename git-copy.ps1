@@ -1,8 +1,33 @@
 <#
 .SYNOPSIS
-    GIT-COPY | v17.7 | Professional Edition
+    GIT-COPY | v16.2 | Professional Edition
+
+.DESCRIPTION
     Bundles code files into a single Markdown snippet and copies to clipboard.
-    Now using Native PowerShell Wildcards for robust filtering.
+    Supports filtering by extension/preset and exclusion of folders.
+    Uses native PowerShell wildcards for robust filtering.
+
+.PARAMETER Arguments
+    File extensions, presets, or exclusion patterns
+
+.PARAMETER Help
+    Show help information
+
+.EXAMPLE
+    git copy
+    Copy all tracked files
+
+.EXAMPLE
+    git copy js ts -tests
+    Copy JS/TS files, exclude tests folder
+
+.EXAMPLE
+    git copy web --exclude node_modules
+    Copy web files, exclude node_modules
+
+.NOTES
+    Version: 16.2
+    Presets: web, backend, dotnet, unity, java, cpp, script, data, config, docs
 #>
 
 [CmdletBinding()]
@@ -14,14 +39,54 @@ param(
     [switch]$Help
 )
 
-Set-StrictMode -Version 2.0
+# ==============================================================================
+# CONFIGURATION
+# ==============================================================================
+
+Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 # Force UTF-8 Output
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
-# --- CONFIG ---
+[Version]$ScriptVersion = "16.2"
 $MAX_SIZE = 1MB
-$FENCE = '```' 
+$FENCE = '```'
+
+# ==============================================================================
+# LOGGING FUNCTIONS
+# ==============================================================================
+
+function Write-Info {
+    [CmdletBinding()]
+    param([string]$Message)
+    Write-Host "ℹ " -NoNewline -ForegroundColor Cyan
+    Write-Host $Message
+}
+
+function Write-Success {
+    [CmdletBinding()]
+    param([string]$Message)
+    Write-Host "✔ " -NoNewline -ForegroundColor Green
+    Write-Host $Message
+}
+
+function Write-Warn {
+    [CmdletBinding()]
+    param([string]$Message)
+    Write-Host "⚠ " -NoNewline -ForegroundColor Yellow
+    Write-Host $Message
+}
+
+function Write-Error {
+    [CmdletBinding()]
+    param([string]$Message)
+    Write-Host "✘ " -NoNewline -ForegroundColor Red
+    Write-Host $Message
+}
+
+# ==============================================================================
+# PRESETS & LANGUAGE MAPS
+# ============================================================================== 
 
 $PRESETS = @{
     "web"     = @("html","htm","css","scss","sass","less","js","jsx","ts","tsx","json","svg","vue","svelte")
@@ -47,17 +112,22 @@ $LANG_MAP = @{
     "gemfile" = "ruby"; "rakefile" = "ruby"
 }
 
-# --- MAIN ---
+# ==============================================================================
+# MAIN EXECUTION
+# ==============================================================================
+
 $ArgsList = @($Arguments)
 
 if ($Help -or ($ArgsList -contains "--help") -or ($ArgsList -contains "-h")) {
-    Write-Host "GIT-COPY | v17.7" -ForegroundColor Cyan
+    Write-Host "GIT-COPY | v$ScriptVersion" -ForegroundColor Cyan
     exit 0
 }
 
 Write-Host "Processing..." -ForegroundColor Cyan
 
-# 1. PARSE ARGUMENTS
+# ==============================================================================
+# ARGUMENT PARSING
+# ==============================================================================
 $TargetExtensions = [System.Collections.Generic.List[string]]::new()
 $ExcludePatterns  = [System.Collections.Generic.List[string]]::new()
 
@@ -118,7 +188,10 @@ for ($i = 0; $i -lt $ArgsList.Count; $i++) {
     }
 }
 
-# 2. DISCOVERY
+# ==============================================================================
+# FILE DISCOVERY
+# ==============================================================================
+
 $RootPath = (Get-Location).Path.TrimEnd('\', '/')
 $RawFiles = @()
 
@@ -130,7 +203,10 @@ if (Test-Path ".git") {
     $RawFiles = Get-ChildItem -Recurse -File | Select-Object -ExpandProperty FullName
 }
 
-# 3. PROCESSING
+# ==============================================================================
+# FILE PROCESSING
+# ==============================================================================
+
 $OutputBuilder = [System.Text.StringBuilder]::new()
 $StructureList = [System.Collections.Generic.List[string]]::new()
 $TotalBytes = 0
@@ -232,7 +308,10 @@ foreach ($FileEntry in $RawFiles) {
     } catch {}
 }
 
-# 4. OUTPUT
+# ==============================================================================
+# OUTPUT
+# ==============================================================================
+
 [void]$OutputBuilder.AppendLine("")
 [void]$OutputBuilder.AppendLine("_Project Structure:_")
 [void]$OutputBuilder.AppendLine("${FENCE}text")
@@ -244,7 +323,7 @@ $FinalOutput = $OutputBuilder.ToString()
 try {
     Set-Clipboard -Value $FinalOutput
 } catch {
-    Write-Host "[ERROR] Failed to set clipboard: $_" -ForegroundColor Red
+    Write-Error "Failed to set clipboard: $_"
     exit 1
 }
 

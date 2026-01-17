@@ -1,21 +1,110 @@
 <#
 .SYNOPSIS
-    Cross-platform test suite for git-copy (Windows)
+    GIT-COPY Test Suite v16.2 - Windows Edition
+
 .DESCRIPTION
-    Tests basic functionality, file filtering, and folder exclusion
+    Comprehensive test suite for git-copy functionality on Windows.
+    Tests file filtering, exclusion, and clipboard operations.
+
+.PARAMETER Verbose
+    Enable verbose output
+
+.PARAMETER Debug
+    Enable debug output
+
+.EXAMPLE
+    .\test.ps1
+    Run all tests
+
+.EXAMPLE
+    .\test.ps1 -Verbose
+    Run tests with verbose output
+
+.NOTES
+    Version: 16.2
+    Requires: Git, PowerShell 5.1+
 #>
 
+[CmdletBinding()]
+param()
+
+# ==============================================================================
+# CONFIGURATION
+# ==============================================================================
+
+Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+
+[Version]$TestVersion = "16.2"
 $TempBase = [System.IO.Path]::GetTempPath()
 $TestDirName = "git-copy-test-$([guid]::NewGuid().ToString('N').Substring(0,8))"
 $TestDir = Join-Path $TempBase $TestDirName
-
 $ScriptPath = Join-Path $PSScriptRoot "git-copy.ps1"
 
-Write-Host "`n=== GIT-COPY TEST SUITE (Cross-Platform) ===" -ForegroundColor Cyan
+# Test tracking
+$TestResults = @{
+    Passed = 0
+    Failed = 0
+    Total = 0
+}
+
+# ==============================================================================
+# LOGGING FUNCTIONS
+# ==============================================================================
+
+function Write-TestInfo {
+    [CmdletBinding()]
+    param([string]$Message)
+    Write-Host "[INFO] " -NoNewline -ForegroundColor Cyan
+    Write-Host $Message
+}
+
+function Write-TestSuccess {
+    [CmdletBinding()]
+    param([string]$Message)
+    Write-Host "[PASS] " -NoNewline -ForegroundColor Green
+    Write-Host $Message
+}
+
+function Write-TestFailure {
+    [CmdletBinding()]
+    param([string]$Message)
+    Write-Host "[FAIL] " -NoNewline -ForegroundColor Red
+    Write-Host $Message
+}
+
+function Invoke-TestCase {
+    [CmdletBinding()]
+    param(
+        [string]$Name,
+        [scriptblock]$TestBlock
+    )
+
+    $TestResults.Total++
+    Write-Host "[TEST $($TestResults.Total)] $Name..." -NoNewline
+
+    try {
+        & $TestBlock
+        Write-Host " PASS" -ForegroundColor Green
+        $TestResults.Passed++
+    }
+    catch {
+        Write-Host " FAIL" -ForegroundColor Red
+        Write-Host "Error: $_" -ForegroundColor Red
+        $TestResults.Failed++
+    }
+}
+
+# ==============================================================================
+# TEST SETUP
+# ==============================================================================
+
+Write-Host "`n=== GIT-COPY TEST SUITE v$TestVersion (Windows) ===" -ForegroundColor Cyan
 Write-Host "Test directory: $TestDir`n" -ForegroundColor Gray
 
-# Create test environment
+# ==============================================================================
+# TEST ENVIRONMENT
+# ==============================================================================
 New-Item -ItemType Directory -Path $TestDir -Force | Out-Null
 Push-Location $TestDir
 
@@ -175,7 +264,20 @@ public class Main {}
         throw "Combined filter and exclude test failed"
     }
 
-    Write-Host "`n=== ALL TESTS PASSED ===" -ForegroundColor Green
+    # ==============================================================================
+    # TEST RESULTS
+    # ==============================================================================
+
+    Write-Host ""
+    Write-Host "============================================================================" -ForegroundColor White
+    Write-Host "=== ALL TESTS PASSED ===" -ForegroundColor Green
+    Write-Host "============================================================================" -ForegroundColor White
+    Write-Host "Total Tests: $($TestResults.Total)"
+    Write-Host "Passed: " -NoNewline
+    Write-Host "$($TestResults.Passed)" -ForegroundColor Green
+    Write-Host "Failed: " -NoNewline
+    Write-Host "$($TestResults.Failed)" -ForegroundColor Red
+    Write-Host ""
 
 } finally {
     Pop-Location

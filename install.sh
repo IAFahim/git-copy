@@ -1,24 +1,87 @@
 #!/usr/bin/env bash
 
-set -o nounset
-set -o pipefail
+# ==============================================================================
+# CONFIGURATION
+# ==============================================================================
 
-TOOL_NAME="git-copy"
-INSTALL_DIR="/usr/local/bin"
-TARGET_PATH="$INSTALL_DIR/$TOOL_NAME"
+set -euo pipefail
 
-# Visuals
-CYAN='\033[0;36m'
-PURPLE='\033[0;35m'
-GREEN='\033[0;32m'
-RED='\033[0;31m'
-NC='\033[0m'
+readonly VERSION="16.2"
+readonly TOOL_NAME="git-copy"
+readonly INSTALL_DIR="/usr/local/bin"
+readonly TARGET_PATH="$INSTALL_DIR/$TOOL_NAME"
 
-echo -e "${PURPLE}>> INSTALLING GIT-COPY v16.2 (CROSS-PLATFORM EDITION) <<${NC}"
+# ==============================================================================
+# VISUALS
+# ==============================================================================
+
+# Color support detection
+if [[ -t 1 ]] && command -v tput &>/dev/null && [[ $(tput colors 2>/dev/null || echo 0) -ge 8 ]]; then
+    RED=$(tput setaf 1)
+    GREEN=$(tput setaf 2)
+    YELLOW=$(tput setaf 3)
+    BLUE=$(tput setaf 4)
+    MAGENTA=$(tput setaf 5)
+    CYAN=$(tput setaf 6)
+    BOLD=$(tput bold)
+    DIM=$(tput dim)
+    RESET=$(tput sgr0)
+else
+    RED="" GREEN="" YELLOW="" BLUE="" MAGENTA="" CYAN="" BOLD="" DIM="" RESET=""
+fi
+
+# ==============================================================================
+# LOGGING FUNCTIONS
+# ==============================================================================
+
+log_info() {
+    echo "${BLUE}[INFO]${RESET} $*" >&2
+}
+
+log_success() {
+    echo "${GREEN}[OK]${RESET} $*" >&2
+}
+
+log_warn() {
+    echo "${YELLOW}[WARN]${RESET} $*" >&2
+}
+
+log_error() {
+    echo "${RED}[ERROR]${RESET} $*" >&2
+}
+
+log_debug() {
+    if [[ "${VERBOSE:-0}" == "1" ]]; then
+        echo "${DIM}[DEBUG] $*${RESET}" >&2
+    fi
+}
+
+# ==============================================================================
+# INSTALLATION
+# ==============================================================================
+
+log_info "Installing GIT-COPY v${VERSION} (Cross-Platform Edition)"
 
 # Permissions Check
 CMD_PREFIX=""
 if [ ! -w "$INSTALL_DIR" ]; then CMD_PREFIX="sudo"; fi
+
+# ==============================================================================
+# CLEANUP HANDLER
+# ==============================================================================
+
+cleanup() {
+    local exit_code=$?
+    if [[ -n "${TMP_PAYLOAD:-}" ]] && [[ -f "$TMP_PAYLOAD" ]]; then
+        rm -f "$TMP_PAYLOAD"
+    fi
+    exit $exit_code
+}
+trap cleanup EXIT INT TERM HUP
+
+# ==============================================================================
+# EMBEDDED PAYLOAD
+# ==============================================================================
 
 # Payload Container
 TMP_PAYLOAD=$(mktemp)
@@ -367,12 +430,15 @@ echo -e "\033[1;32m✔\033[0;32m Copied: \033[1m${COUNT}\033[0;32m files | Size:
 
 EOF
 
-# Install
+# ==============================================================================
+# FINALIZE INSTALLATION
+# ==============================================================================
+
 $CMD_PREFIX install -m 755 "$TMP_PAYLOAD" "$TARGET_PATH"
-rm -f "$TMP_PAYLOAD"
 
 if [ -x "$TARGET_PATH" ]; then
-    echo -e "${GREEN}✔ Installed v16.2 (Cross-Platform Edition).${NC}"
+    log_success "Installed v${VERSION} (Cross-Platform Edition)"
 else
-    echo -e "${RED}✘ Failed.${NC}"
+    log_error "Installation failed"
+    exit 1
 fi

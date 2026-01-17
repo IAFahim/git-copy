@@ -1,28 +1,106 @@
 #!/usr/bin/env bash
 
-set -e
+# ==============================================================================
+# CONFIGURATION
+# ==============================================================================
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TEST_DIR=$(mktemp -d)
-SCRIPT_PATH="$SCRIPT_DIR/install.sh"
+set -euo pipefail
 
-# Colors
-GREEN='\033[0;32m'
-RED='\033[0;31m'
-CYAN='\033[0;36m'
-GRAY='\033[0;90m'
-NC='\033[0m'
+readonly VERSION="16.2"
+readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly TEST_DIR=$(mktemp -d)
+readonly SCRIPT_PATH="$SCRIPT_DIR/install.sh"
 
-echo -e "\n${CYAN}=== GIT-COPY TEST SUITE (Unix) ===${NC}"
-echo -e "${GRAY}Test directory: $TEST_DIR${NC}\n"
+# Test tracking
+TESTS_PASSED=0
+TESTS_FAILED=0
+
+# ==============================================================================
+# VISUALS
+# ==============================================================================
+
+# Color support detection
+if [[ -t 1 ]] && command -v tput &>/dev/null && [[ $(tput colors 2>/dev/null || echo 0) -ge 8 ]]; then
+    RED=$(tput setaf 1)
+    GREEN=$(tput setaf 2)
+    YELLOW=$(tput setaf 3)
+    BLUE=$(tput setaf 4)
+    MAGENTA=$(tput setaf 5)
+    CYAN=$(tput setaf 6)
+    BOLD=$(tput bold)
+    DIM=$(tput dim)
+    RESET=$(tput sgr0)
+else
+    RED="" GREEN="" YELLOW="" BLUE="" MAGENTA="" CYAN="" BOLD="" DIM="" RESET=""
+fi
+
+# ==============================================================================
+# LOGGING FUNCTIONS
+# ==============================================================================
+
+log_info() {
+    echo "${BLUE}[INFO]${RESET} $*" >&2
+}
+
+log_success() {
+    echo "${GREEN}[OK]${RESET} $*" >&2
+}
+
+log_warn() {
+    echo "${YELLOW}[WARN]${RESET} $*" >&2
+}
+
+log_error() {
+    echo "${RED}[ERROR]${RESET} $*" >&2
+}
+
+log_debug() {
+    if [[ "${VERBOSE:-0}" == "1" ]]; then
+        echo "${DIM}[DEBUG] $*${RESET}" >&2
+    fi
+}
+
+log_test_result() {
+    local test_name="$1"
+    local result="$2"
+    if [[ "$result" == "PASS" ]]; then
+        echo "${GREEN}PASS${RESET} - $test_name"
+        ((TESTS_PASSED++))
+    else
+        echo "${RED}FAIL${RESET} - $test_name"
+        ((TESTS_FAILED++))
+    fi
+}
+
+# ==============================================================================
+# TEST SUITE
+# ==============================================================================
+
+echo -e "\n${CYAN}=== GIT-COPY TEST SUITE v${VERSION} (Unix) ===${RESET}"
+echo -e "${DIM}Test directory: $TEST_DIR${RESET}\n"
 
 cd "$TEST_DIR"
 
+# ==============================================================================
+# CLEANUP HANDLER
+# ==============================================================================
+
 cleanup() {
-    cd /
-    rm -rf "$TEST_DIR"
+    local exit_code=$?
+    cd / || true
+    if [[ -n "${TEST_DIR:-}" ]] && [[ -d "$TEST_DIR" ]]; then
+        rm -rf "$TEST_DIR"
+    fi
+    if [[ -n "${EMBEDDED_SCRIPT:-}" ]] && [[ -f "$EMBEDDED_SCRIPT" ]]; then
+        rm -f "$EMBEDDED_SCRIPT"
+    fi
+    exit $exit_code
 }
-trap cleanup EXIT
+trap cleanup EXIT INT TERM HUP
+
+# ==============================================================================
+# TEST SETUP
+# ==============================================================================
 
 # Initialize git repo
 git init -q
@@ -110,9 +188,9 @@ capture_output() {
 echo -n "[TEST 1] Basic copy all files..."
 output=$(capture_output)
 if echo "$output" | grep -q "Copied:"; then
-    echo -e " ${GREEN}PASS${NC}"
+    echo -e " ${GREEN}PASS${RESET}"
 else
-    echo -e " ${RED}FAIL${NC}"
+    echo -e " ${RED}FAIL${RESET}"
     echo "Output: $output"
     exit 1
 fi
@@ -121,9 +199,9 @@ fi
 echo -n "[TEST 2] Filter by extension (js)..."
 output=$(capture_output js)
 if echo "$output" | grep -q "files"; then
-    echo -e " ${GREEN}PASS${NC}"
+    echo -e " ${GREEN}PASS${RESET}"
 else
-    echo -e " ${RED}FAIL${NC}"
+    echo -e " ${RED}FAIL${RESET}"
     exit 1
 fi
 
@@ -131,9 +209,9 @@ fi
 echo -n "[TEST 3] Filter by preset (web)..."
 output=$(capture_output web)
 if echo "$output" | grep -q "files"; then
-    echo -e " ${GREEN}PASS${NC}"
+    echo -e " ${GREEN}PASS${RESET}"
 else
-    echo -e " ${RED}FAIL${NC}"
+    echo -e " ${RED}FAIL${RESET}"
     exit 1
 fi
 
@@ -142,13 +220,13 @@ echo -n "[TEST 4] Exclude folder (-temp)..."
 "$EMBEDDED_SCRIPT" -temp 2>&1 | grep -v "Processing..." >/dev/null
 if [ -f "$HOME/mock_clipboard.txt" ]; then
     if ! grep -q "temp.txt" "$HOME/mock_clipboard.txt" 2>/dev/null; then
-        echo -e " ${GREEN}PASS${NC}"
+        echo -e " ${GREEN}PASS${RESET}"
     else
-        echo -e " ${RED}FAIL${NC}"
+        echo -e " ${RED}FAIL${RESET}"
         exit 1
     fi
 else
-    echo -e " ${RED}FAIL - No output${NC}"
+    echo -e " ${RED}FAIL - No output${RESET}"
     exit 1
 fi
 
@@ -157,13 +235,13 @@ echo -n "[TEST 5] Exclude nested folder (-src/components)..."
 "$EMBEDDED_SCRIPT" -src/components 2>&1 | grep -v "Processing..." >/dev/null
 if [ -f "$HOME/mock_clipboard.txt" ]; then
     if ! grep -q "Button.jsx" "$HOME/mock_clipboard.txt" 2>/dev/null; then
-        echo -e " ${GREEN}PASS${NC}"
+        echo -e " ${GREEN}PASS${RESET}"
     else
-        echo -e " ${RED}FAIL${NC}"
+        echo -e " ${RED}FAIL${RESET}"
         exit 1
     fi
 else
-    echo -e " ${RED}FAIL - No output${NC}"
+    echo -e " ${RED}FAIL - No output${RESET}"
     exit 1
 fi
 
@@ -172,13 +250,13 @@ echo -n "[TEST 6] Multiple excludes (-temp -src)..."
 "$EMBEDDED_SCRIPT" -temp -src 2>&1 | grep -v "Processing..." >/dev/null
 if [ -f "$HOME/mock_clipboard.txt" ]; then
     if ! grep -q "temp.txt\|Main.java\|Button.jsx" "$HOME/mock_clipboard.txt" 2>/dev/null; then
-        echo -e " ${GREEN}PASS${NC}"
+        echo -e " ${GREEN}PASS${RESET}"
     else
-        echo -e " ${RED}FAIL${NC}"
+        echo -e " ${RED}FAIL${RESET}"
         exit 1
     fi
 else
-    echo -e " ${RED}FAIL - No output${NC}"
+    echo -e " ${RED}FAIL - No output${RESET}"
     exit 1
 fi
 
@@ -188,14 +266,14 @@ echo -n "[TEST 7] Filter (web) + Exclude (-src)..."
 # Check the clipboard mock file
 if [ -f "$HOME/mock_clipboard.txt" ]; then
     if grep -q "test.js" "$HOME/mock_clipboard.txt" 2>/dev/null && ! grep -q "Button.jsx" "$HOME/mock_clipboard.txt" 2>/dev/null; then
-        echo -e " ${GREEN}PASS${NC}"
+        echo -e " ${GREEN}PASS${RESET}"
     else
-        echo -e " ${RED}FAIL${NC}"
+        echo -e " ${RED}FAIL${RESET}"
         cat "$HOME/mock_clipboard.txt"
         exit 1
     fi
 else
-    echo -e " ${RED}FAIL - No clipboard output${NC}"
+    echo -e " ${RED}FAIL - No clipboard output${RESET}"
     exit 1
 fi
 
@@ -204,13 +282,13 @@ echo -n "[TEST 8] Using --exclude flag..."
 "$EMBEDDED_SCRIPT" --exclude temp 2>&1 | grep -v "Processing..." >/dev/null
 if [ -f "$HOME/mock_clipboard.txt" ]; then
     if ! grep -q "temp.txt" "$HOME/mock_clipboard.txt" 2>/dev/null; then
-        echo -e " ${GREEN}PASS${NC}"
+        echo -e " ${GREEN}PASS${RESET}"
     else
-        echo -e " ${RED}FAIL${NC}"
+        echo -e " ${RED}FAIL${RESET}"
         exit 1
     fi
 else
-    echo -e " ${RED}FAIL - No output${NC}"
+    echo -e " ${RED}FAIL - No output${RESET}"
     exit 1
 fi
 
@@ -223,16 +301,27 @@ git commit -q -m "Add folder with spaces"
 "$EMBEDDED_SCRIPT" -"folder with spaces" 2>&1 | grep -v "Processing..." >/dev/null
 if [ -f "$HOME/mock_clipboard.txt" ]; then
     if ! grep -q "folder with spaces/file.txt" "$HOME/mock_clipboard.txt" 2>/dev/null; then
-        echo -e " ${GREEN}PASS${NC}"
+        echo -e " ${GREEN}PASS${RESET}"
     else
-        echo -e " ${RED}FAIL${NC}"
+        echo -e " ${RED}FAIL${RESET}"
         exit 1
     fi
 else
-    echo -e " ${RED}FAIL - No output${NC}"
+    echo -e " ${RED}FAIL - No output${RESET}"
     exit 1
 fi
 
 rm -f "$EMBEDDED_SCRIPT"
 
-echo -e "\n${GREEN}=== ALL TESTS PASSED ===${NC}\n"
+# ==============================================================================
+# TEST RESULTS
+# ==============================================================================
+
+echo ""
+echo "${BOLD}============================================================================${RESET}"
+echo "${GREEN}=== ALL TESTS PASSED ===${RESET}"
+echo "${BOLD}============================================================================${RESET}"
+echo "Total Tests: $((TESTS_PASSED + TESTS_FAILED))"
+echo "Passed: ${GREEN}${TESTS_PASSED}${RESET}"
+echo "Failed: ${RED}${TESTS_FAILED}${RESET}"
+echo ""
