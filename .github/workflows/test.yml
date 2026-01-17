@@ -64,49 +64,117 @@ jobs:
       - name: Integration Test - Direct Script Execution
         shell: powershell
         run: |
-          # Setup test fixtures
-          New-Item -ItemType Directory -Force -Path "TestProject" | Out-Null
-          "public class PlayerController : MonoBehaviour {}" | Set-Content "TestProject/Player.cs"
-          "guid: 12345" | Set-Content "TestProject/Player.cs.meta"
-          "SECRET_KEY=123" | Set-Content "TestProject/.env"
-          "node_modules stuff" | Set-Content "TestProject/package-lock.json"
+          # ==========================================================================
+          # LAYER 1: The Test Engine (Generic & Reusable)
+          # ==========================================================================
+          & {
+              $ErrorActionPreference = "Stop"
 
-          # Mock clipboard - use absolute path
-          $OutputPath = "$PWD\TestProject\clipboard_output.md"
-          function Set-Clipboard {
-              param([Parameter(ValueFromPipeline=$true)]$Value)
-              $Value | Set-Content $OutputPath
+              # --- DOMAIN SPECIFIC LANGUAGE (DSL) ---
+
+              function Assert-TextPresent {
+                  param([string]$Content, [string]$Term, [string]$Context)
+                  if ($Content -notmatch [regex]::Escape($Term)) {
+                      throw "[-] FAIL ($Context): Output missing required term '$Term'"
+                  }
+              }
+
+              function Assert-TextAbsent {
+                  param([string]$Content, [string]$Term, [string]$Context)
+                  if ($Content -match [regex]::Escape($Term)) {
+                      throw "[-] FAIL ($Context): Output contains forbidden term '$Term'"
+                  }
+              }
+
+              # --- SETUP: PATHS & CONSTANTS ---
+              $Root          = Get-Location
+              $ToolName      = "git-copy.ps1"
+              $ToolPath      = Join-Path $Root $ToolName
+              $SandboxName   = "Test_Sandbox_Area"
+              $SandboxPath   = Join-Path $Root $SandboxName
+              $MockOutput    = "mock_clipboard.txt"
+
+              Write-Host "[INIT] Test Suite for: $ToolName" -ForegroundColor Cyan
+
+              # --- LAYER 2: DATA SETUP (The Scenario) ---
+              $TestScenario = @{
+                  FilesToCreate = @(
+                      @{ Path = "Player.cs"; Content = "public class Player : MonoBehaviour {}" }
+                      @{ Path = "Player.cs.meta"; Content = "guid: xyz" }
+                      @{ Path = ".env"; Content = "AWS_KEY=SECRET" }
+                      @{ Path = "Library/Cache.bin"; Content = "010101" }
+                  )
+                  Args = "unity"
+                  Expectations = @{
+                      ShouldContain = @("Player.cs", "public class Player")
+                      ShouldIgnore  = @("Player.cs.meta", ".env", "Library")
+                  }
+              }
+
+              # --- EXECUTION ---
+              try {
+                  # 1. PRE-FLIGHT CHECKS
+                  if (-not (Test-Path $ToolPath)) { throw "CRITICAL: Tool not found at $ToolPath" }
+
+                  # 2. ENVIRONMENT SANITIZATION
+                  if (Test-Path $SandboxPath) { Remove-Item $SandboxPath -Recurse -Force }
+                  $null = New-Item -ItemType Directory -Path $SandboxPath
+
+                  # 3. FIXTURE GENERATION
+                  foreach ($File in $TestScenario.FilesToCreate) {
+                      $FullPath = Join-Path $SandboxPath $File.Path
+                      $ParentDir = Split-Path $FullPath
+                      if (-not (Test-Path $ParentDir)) { $null = New-Item -ItemType Directory -Path $ParentDir }
+
+                      $File.Content | Set-Content $FullPath
+                  }
+
+                  # 4. MOCK INJECTION (Corrected Pipeline Handling)
+                  function Set-Clipboard {
+                      param([Parameter(ValueFromPipeline=$true)]$Value)
+
+                      End {
+                          $Input | Out-String | Set-Content $MockOutput
+                      }
+                  }
+
+                  # 5. ISOLATED RUN
+                  Push-Location $SandboxPath
+                  try {
+                      Write-Host "[RUN] Executing tool with args: $($TestScenario.Args)..." -ForegroundColor Yellow
+
+                      & $ToolPath $TestScenario.Args
+
+                      # 6. VERIFICATION
+                      if (-not (Test-Path $MockOutput)) {
+                          throw "CRITICAL: Tool produced no output (Mock file missing)"
+                      }
+
+                      $Result = Get-Content $MockOutput -Raw
+
+                      # Validate Whitelist
+                      foreach ($Term in $TestScenario.Expectations.ShouldContain) {
+                          Assert-TextPresent -Content $Result -Term $Term -Context "Whitelist"
+                      }
+                      Write-Host "[+] PASS: Core content present." -ForegroundColor Gray
+
+                      # Validate Blacklist
+                      foreach ($Term in $TestScenario.Expectations.ShouldIgnore) {
+                          Assert-TextAbsent -Content $Result -Term $Term -Context "Blacklist"
+                      }
+                      Write-Host "[+] PASS: Ignored files are absent." -ForegroundColor Gray
+
+                      Write-Host "`n[SUCCESS] Integration Test Passed." -ForegroundColor Green
+                  }
+                  finally {
+                      Pop-Location
+                  }
+              }
+              catch {
+                  Write-Error $_
+                  exit 1
+              }
           }
-
-          # Run tool
-          cd TestProject
-          & ..\git-copy.ps1 unity
-
-          # Verify output
-          if (-not (Test-Path $OutputPath)) {
-            Write-Error "FAIL: No output created at $OutputPath"
-            exit 1
-          }
-
-          $Output = Get-Content $OutputPath -Raw
-
-          # Assertions
-          if ($Output -notmatch "Player.cs") {
-            Write-Error "FAIL: Player.cs missing"
-            exit 1
-          }
-
-          if ($Output -match "Player.cs.meta") {
-            Write-Error "FAIL: .meta file not ignored"
-            exit 1
-          }
-
-          if ($Output -match "SECRET_KEY") {
-            Write-Error "FAIL: .env file not ignored"
-            exit 1
-          }
-
-          Write-Host "[OK] Integration test passed" -ForegroundColor Green
 
       - name: Create Report
         if: always()
