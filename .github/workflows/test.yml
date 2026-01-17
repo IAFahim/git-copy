@@ -202,11 +202,27 @@ jobs:
                   }
               )
 
-              # --- EXECUTION ---
-              $ToolLocation = Join-Path $PSScriptRoot "git-copy.ps1"
+              # --- EXECUTION CONTEXT RESOLVER ---
+              # Detect if running in CI (GitHub Actions) or locally
+              if ($env:GITHUB_ACTIONS -eq 'true') {
+                  # CI MODE: Code is in Workspace root
+                  $BaseDir = $env:GITHUB_WORKSPACE
+                  Write-Host "[INFO] Detected CI Environment. Root: $BaseDir" -ForegroundColor Cyan
+              }
+              else {
+                  # LOCAL MODE: Code is relative to test script
+                  $BaseDir = $PSScriptRoot
+                  Write-Host "[INFO] Detected Local Environment. Root: $BaseDir" -ForegroundColor Cyan
+              }
 
+              $ToolLocation = Join-Path $BaseDir "git-copy.ps1"
+
+              # --- PRE-FLIGHT CHECK ---
               if (-not (Test-Path $ToolLocation)) {
-                  throw "CRITICAL: Tool not found at $ToolLocation"
+                  # List directory contents for debugging
+                  Write-Warning "BaseDir Contents:"
+                  Get-ChildItem $BaseDir | Select-Object Name | Format-Table -HideTableHeaders
+                  throw "CRITICAL: Tool not found at [$ToolLocation]"
               }
 
               Invoke-GitCopyTest -ToolPath $ToolLocation -Scenarios $Tests
@@ -346,10 +362,31 @@ jobs:
           # LAYER C: Test Configuration & Execution
           # ==========================================================================
           {
-              # Install the tool first
+              # --- EXECUTION CONTEXT RESOLVER ---
+              # Detect if running in CI (GitHub Actions) or locally
+              if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
+                  # CI MODE: Code is in Workspace root
+                  BASE_DIR="${GITHUB_WORKSPACE}"
+                  echo "[INFO] Detected CI Environment. Root: ${BASE_DIR}"
+              else
+                  # LOCAL MODE: Code is in current directory
+                  BASE_DIR="$(pwd)"
+                  echo "[INFO] Detected Local Environment. Root: ${BASE_DIR}"
+              fi
+
+              # --- INSTALLATION ---
+              cd "$BASE_DIR"
               chmod +x install.sh
               sudo ./install.sh
 
+              # --- PRE-FLIGHT CHECK ---
+              if [[ ! -f "/usr/local/bin/git-copy" ]]; then
+                  echo "[WARN] Installed tool not found. Listing contents:" >&2
+                  ls -la /usr/local/bin/ | grep git || echo "No git-* tools found in /usr/local/bin/" >&2
+                  exit 1
+              fi
+
+              # --- TEST EXECUTION ---
               # SCENARIO: Unity Project Export Test
               run_git_copy_test \
                   "Unity Project Export Test" \
