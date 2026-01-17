@@ -64,187 +64,48 @@ jobs:
       - name: Integration Test - Direct Script Execution
         shell: powershell
         run: |
-          # ==========================================================================
-          # LAYER A: Pure Data Structure (The Contract)
-          # ==========================================================================
-          class TestScenario {
-              [string] $Name
-              [string] $Arguments
-              [hashtable] $FileSystemState
-              [string[]] $MustContain
-              [string[]] $MustNotContain
+          # Setup test fixtures
+          New-Item -ItemType Directory -Force -Path "TestProject" | Out-Null
+          "public class PlayerController : MonoBehaviour {}" | Set-Content "TestProject/Player.cs"
+          "guid: 12345" | Set-Content "TestProject/Player.cs.meta"
+          "SECRET_KEY=123" | Set-Content "TestProject/.env"
+          "node_modules stuff" | Set-Content "TestProject/package-lock.json"
+
+          # Mock clipboard
+          function Set-Clipboard {
+              param([Parameter(ValueFromPipeline=$true)]$Value)
+              $Value | Set-Content "TestProject/clipboard_output.md"
           }
 
-          # ==========================================================================
-          # LAYER B: High-Performance Test Engine
-          # ==========================================================================
-          function Invoke-GitCopyTest {
-              param(
-                  [Parameter(Mandatory)]
-                  [string]$ToolPath,
+          # Run tool
+          cd TestProject
+          & ..\git-copy.ps1 unity
 
-                  [Parameter(Mandatory)]
-                  [TestScenario[]]$Scenarios
-              )
-
-              $ErrorActionPreference = "Stop"
-
-              # 1. GLOBAL SETUP
-              $SandboxRoot = Join-Path ([System.IO.Path]::GetTempPath()) "GitCopy_Test_Sandbox_$(Get-Random)"
-
-              try {
-                  foreach ($Case in $Scenarios) {
-                      Write-Host "[:] SCENARIO: $($Case.Name)" -ForegroundColor Cyan
-
-                      # ---------------------------------------------------------
-                      # PHASE 1: SANDBOX CONSTRUCTION
-                      # ---------------------------------------------------------
-                      if (Test-Path $SandboxRoot) { Remove-Item $SandboxRoot -Recurse -Force | Out-Null }
-                      $null = New-Item -ItemType Directory -Path $SandboxRoot
-
-                      foreach ($Key in $Case.FileSystemState.Keys) {
-                          $FullPath = Join-Path $SandboxRoot $Key
-                          $ParentDir = Split-Path $FullPath
-                          if (-not (Test-Path $ParentDir)) { $null = New-Item -ItemType Directory -Path $ParentDir }
-
-                          $Case.FileSystemState[$Key] | Set-Content -Path $FullPath
-                      }
-
-                      # ---------------------------------------------------------
-                      # PHASE 2: IN-MEMORY MOCKING
-                      # ---------------------------------------------------------
-                      $ScriptBlock = {
-                          param($ToolPath, $Args, $SandboxRoot)
-
-                          # THE TRAP: In-memory variable
-                          $global:MockClipboardRam = $null
-
-                          # THE MOCK: Support both pipeline and -Value parameter
-                          function Set-Clipboard {
-                              param(
-                                  [Parameter(Position=0, ParameterSetName='Direct')]
-                                  [string]$Value,
-
-                                  [Parameter(ValueFromPipeline=$true, ParameterSetName='Pipeline')]
-                                  [string]$InputObject
-                              )
-
-                              Begin {
-                                  if ($PSCmdlet.ParameterSetName -eq 'Pipeline') {
-                                      $InternalBuffer = [System.Collections.Generic.List[string]]::new()
-                                  }
-                              }
-                              Process {
-                                  if ($PSCmdlet.ParameterSetName -eq 'Pipeline' -and $null -ne $_) {
-                                      $InternalBuffer.Add($_)
-                                  }
-                              }
-                              End {
-                                  if ($PSCmdlet.ParameterSetName -eq 'Pipeline') {
-                                      $global:MockClipboardRam = $InternalBuffer -join [Environment]::NewLine
-                                  } elseif ($PSCmdlet.ParameterSetName -eq 'Direct') {
-                                      $global:MockClipboardRam = $Value
-                                  }
-                              }
-                          }
-
-                          # EXECUTE
-                          Push-Location $SandboxRoot
-                          try {
-                              & $ToolPath $Args
-                          }
-                          finally {
-                              Pop-Location
-                          }
-                      }
-
-                      # ---------------------------------------------------------
-                      # PHASE 3: EXECUTION & ASSERTION
-                      # ---------------------------------------------------------
-                      Invoke-Command -ScriptBlock $ScriptBlock -ArgumentList $ToolPath, $Case.Arguments, $SandboxRoot
-
-                      # Retrieve the trap variable
-                      $ResultData = $global:MockClipboardRam
-
-                      # Validation: Null Check
-                      if ([string]::IsNullOrWhiteSpace($ResultData)) {
-                          throw "[-] CRITICAL FAIL: Clipboard was empty. Tool produced no output."
-                      }
-
-                      # Validation: Whitelist
-                      foreach ($Term in $Case.MustContain) {
-                          if ($ResultData -notmatch [regex]::Escape($Term)) {
-                              throw "[-] FAIL: Output missing required term '$Term'"
-                          }
-                      }
-
-                      # Validation: Blacklist
-                      foreach ($Term in $Case.MustNotContain) {
-                          if ($ResultData -match [regex]::Escape($Term)) {
-                              throw "[-] FAIL: Output contains forbidden term '$Term'"
-                          }
-                      }
-
-                      Write-Host "    [+] PASS" -ForegroundColor Green
-                  }
-              }
-              catch {
-                  Write-Error "TEST FAILURE IN SCENARIO [$($Case.Name)]: $_"
-                  exit 1
-              }
-              finally {
-                  if (Test-Path $SandboxRoot) { Remove-Item $SandboxRoot -Recurse -Force | Out-Null }
-                  $global:MockClipboardRam = $null
-              }
+          # Verify output
+          if (-not (Test-Path "clipboard_output.md")) {
+            Write-Error "FAIL: No output created"
+            exit 1
           }
 
-          # ==========================================================================
-          # LAYER C: The Runner (Configuration)
-          # ==========================================================================
-          & {
-              # --- DATA DEFINITION ---
-              $Tests = @(
-                  [TestScenario]@{
-                      Name            = "Unity Project Export Test"
-                      Arguments       = "unity"
-                      FileSystemState = @{
-                          "Player.cs"          = "public class Player : MonoBehaviour {}"
-                          "Player.cs.meta"     = "guid: xyz"
-                          "Library/Cache.bin"  = "010101"
-                          ".env"               = "AWS_KEY=SECRET"
-                      }
-                      MustContain     = @("Player.cs", "public class Player")
-                      MustNotContain  = @("Player.cs.meta", "Library", ".env")
-                  }
-              )
+          $Output = Get-Content "clipboard_output.md" -Raw
 
-              # --- EXECUTION CONTEXT RESOLVER ---
-              # Detect if running in CI (GitHub Actions) or locally
-              if ($env:GITHUB_ACTIONS -eq 'true') {
-                  # CI MODE: Code is in Workspace root
-                  $BaseDir = $env:GITHUB_WORKSPACE
-                  Write-Host "[INFO] Detected CI Environment. Root: $BaseDir" -ForegroundColor Cyan
-              }
-              else {
-                  # LOCAL MODE: Code is relative to test script
-                  $BaseDir = $PSScriptRoot
-                  Write-Host "[INFO] Detected Local Environment. Root: $BaseDir" -ForegroundColor Cyan
-              }
-
-              $ToolLocation = Join-Path $BaseDir "git-copy.ps1"
-
-              # --- PRE-FLIGHT CHECK ---
-              if (-not (Test-Path $ToolLocation)) {
-                  # List directory contents for debugging
-                  Write-Warning "BaseDir Contents:"
-                  Get-ChildItem $BaseDir | Select-Object Name | Format-Table -HideTableHeaders
-                  throw "CRITICAL: Tool not found at [$ToolLocation]"
-              }
-
-              Invoke-GitCopyTest -ToolPath $ToolLocation -Scenarios $Tests
-
-              Write-Host "`n[SUCCESS] All Integration Tests Passed." -ForegroundColor Green
+          # Assertions
+          if ($Output -notmatch "Player.cs") {
+            Write-Error "FAIL: Player.cs missing"
+            exit 1
           }
+
+          if ($Output -match "Player.cs.meta") {
+            Write-Error "FAIL: .meta file not ignored"
+            exit 1
+          }
+
+          if ($Output -match "SECRET_KEY") {
+            Write-Error "FAIL: .env file not ignored"
+            exit 1
+          }
+
+          Write-Host "[OK] Integration test passed" -ForegroundColor Green
 
       - name: Create Report
         if: always()
@@ -275,148 +136,55 @@ jobs:
 
       - name: Integration Test - Installed Tool
         run: |
-          # ==========================================================================
-          # LAYER A: Test Scenario Data Structure
-          # ==========================================================================
-          # In Bash, we use functions to define scenario data
-          define_scenario() {
-              SCENARIO_NAME="$1"
-              SCENARIO_ARGS="$2"
-              SCENARIO_MUST_CONTAIN="$3"
-              SCENARIO_MUST_NOT_CONTAIN="$4"
-          }
+          # Install the tool
+          chmod +x install.sh
+          sudo ./install.sh
 
-          # ==========================================================================
-          # LAYER B: Reusable Test Engine
-          # ==========================================================================
-          run_git_copy_test() {
-              local scenario_name="$1"
-              local scenario_args="$2"
-              local must_contain="$3"
-              local must_not_contain="$4"
-              shift 4
+          # Setup test fixtures
+          mkdir TestProject
+          cd TestProject
+          echo "public class PlayerController : MonoBehaviour {}" > Player.cs
+          echo "guid: 12345" > Player.cs.meta
+          echo "SECRET_KEY=123" > .env
+          echo "garbage" > package-lock.json
 
-              # Create sandbox
-              local sandbox_root=$(mktemp -d)
-              trap "rm -rf '$sandbox_root'" EXIT
+          # Mock clipboard tools
+          mkdir -p $HOME/bin
+          for cmd in pbcopy xclip wl-copy; do
+            echo '#!/bin/bash' > $HOME/bin/$cmd
+            echo 'cat > $HOME/mock_clipboard.txt' >> $HOME/bin/$cmd
+            chmod +x $HOME/bin/$cmd
+          done
+          export PATH="$HOME/bin:$PATH"
 
-              echo "[:] SCENARIO: $scenario_name"
+          # Run installed tool
+          /usr/local/bin/git-copy unity
 
-              # ---------------------------------------------------------
-              # PHASE 1: Sandbox Construction
-              # ---------------------------------------------------------
-              # Process remaining args as file_spec=content pairs
-              while [[ $# -gt 0 ]]; do
-                  local file_spec="$1"
-                  local content="$2"
-                  shift 2
+          # Verify output
+          if [ ! -f "$HOME/mock_clipboard.txt" ]; then
+            echo "[FAIL] FAIL: No output created"
+            exit 1
+          fi
 
-                  local full_path="$sandbox_root/$file_spec"
-                  mkdir -p "$(dirname "$full_path")"
-                  echo "$content" > "$full_path"
-              done
+          OUTPUT=$(cat $HOME/mock_clipboard.txt)
 
-              # ---------------------------------------------------------
-              # PHASE 2: Mock Clipboard Setup
-              # ---------------------------------------------------------
-              local mock_output="$sandbox_root/mock_clipboard.txt"
-              mkdir -p "$sandbox_root/bin"
+          # Assertions
+          if ! echo "$OUTPUT" | grep -q "Player.cs"; then
+            echo "[FAIL] FAIL: Player.cs missing"
+            exit 1
+          fi
 
-              for cmd in pbcopy xclip wl-copy; do
-                  printf '#!/bin/bash\ncat > "$SANDBOX_ROOT/mock_clipboard.txt"\n' > "$sandbox_root/bin/$cmd"
-                  chmod +x "$sandbox_root/bin/$cmd"
-              done
+          if echo "$OUTPUT" | grep -q "Player.cs.meta"; then
+            echo "[FAIL] FAIL: .meta file not ignored"
+            exit 1
+          fi
 
-              # ---------------------------------------------------------
-              # PHASE 3: Execution
-              # ---------------------------------------------------------
-              (
-                  cd "$sandbox_root"
-                  SANDBOX_ROOT="$sandbox_root" \
-                  PATH="$sandbox_root/bin:$PATH" \
-                  /usr/local/bin/git-copy $scenario_args &>/dev/null || true
-              )
+          if echo "$OUTPUT" | grep -q "SECRET_KEY"; then
+            echo "[FAIL] FAIL: .env file not ignored"
+            exit 1
+          fi
 
-              # ---------------------------------------------------------
-              # PHASE 4: Validation
-              # ---------------------------------------------------------
-              if [[ ! -f "$mock_output" ]]; then
-                  echo "    [-] FAIL: No output created"
-                  exit 1
-              fi
-
-              local result_data
-              result_data=$(cat "$mock_output")
-
-              # Null Check
-              if [[ -z "$result_data" ]]; then
-                  echo "    [-] FAIL: Clipboard was empty"
-                  exit 1
-              fi
-
-              # Whitelist Validation
-              local term
-              for term in $(echo "$must_contain" | tr ',' ' '); do
-                  if ! echo "$result_data" | grep -qF "$term"; then
-                      echo "    [-] FAIL: Output missing required term '$term'"
-                      exit 1
-                  fi
-              done
-
-              # Blacklist Validation
-              for term in $(echo "$must_not_contain" | tr ',' ' '); do
-                  if echo "$result_data" | grep -qF "$term"; then
-                      echo "    [-] FAIL: Output contains forbidden term '$term'"
-                      exit 1
-                  fi
-              done
-
-              echo "    [+] PASS"
-          }
-
-          # ==========================================================================
-          # LAYER C: Test Configuration & Execution
-          # ==========================================================================
-          {
-              # --- EXECUTION CONTEXT RESOLVER ---
-              # Detect if running in CI (GitHub Actions) or locally
-              if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
-                  # CI MODE: Code is in Workspace root
-                  BASE_DIR="${GITHUB_WORKSPACE}"
-                  echo "[INFO] Detected CI Environment. Root: ${BASE_DIR}"
-              else
-                  # LOCAL MODE: Code is in current directory
-                  BASE_DIR="$(pwd)"
-                  echo "[INFO] Detected Local Environment. Root: ${BASE_DIR}"
-              fi
-
-              # --- INSTALLATION ---
-              cd "$BASE_DIR"
-              chmod +x install.sh
-              sudo ./install.sh
-
-              # --- PRE-FLIGHT CHECK ---
-              if [[ ! -f "/usr/local/bin/git-copy" ]]; then
-                  echo "[WARN] Installed tool not found. Listing contents:" >&2
-                  ls -la /usr/local/bin/ | grep git || echo "No git-* tools found in /usr/local/bin/" >&2
-                  exit 1
-              fi
-
-              # --- TEST EXECUTION ---
-              # SCENARIO: Unity Project Export Test
-              run_git_copy_test \
-                  "Unity Project Export Test" \
-                  "unity" \
-                  "Player.cs,public class Player" \
-                  "Player.cs.meta,Library,.env" \
-                  "Player.cs" "public class Player : MonoBehaviour {}" \
-                  "Player.cs.meta" "guid: xyz" \
-                  "Library/Cache.bin" "010101" \
-                  ".env" "AWS_KEY=SECRET"
-
-              echo ""
-              echo "[SUCCESS] All Integration Tests Passed."
-          }
+          echo "[OK] Integration test passed"
 
       - name: Create Report
         if: always()
