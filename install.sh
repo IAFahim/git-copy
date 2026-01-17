@@ -106,6 +106,7 @@ USAGE:
 
 OPTIONS:
     --help, -h          Show this help message
+    --output, -o <file> Save output to file instead of clipboard
 
 FILTERS:
     <extension>         Copy only files with specified extensions (e.g., js py)
@@ -146,6 +147,8 @@ EXAMPLES:
     git copy --*.Tests                    Exclude all .Tests folders/files
     git copy -.md                         Exclude all markdown files
     git copy --test* -*.tmp               Exclude test* folders and *.tmp files
+    git copy -o gitcopy.md                Save output to gitcopy.md instead of clipboard
+    git copy --output result.txt          Save output to result.txt instead of clipboard
 
 HELP_EOF
     exit 0
@@ -165,9 +168,17 @@ MAX_SIZE=1048576
 FILTER_ARGS=""
 EXCLUDE_PATHS=""
 EXCLUDE_PATTERNS=""
+OUTPUT_FILE=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
+        --output|-o)
+            shift
+            if [[ $# -gt 0 ]]; then
+                OUTPUT_FILE="$1"
+                shift
+            fi
+            ;;
         --exclude)
             shift
             if [[ $# -gt 0 ]]; then
@@ -423,10 +434,15 @@ copy_to_clipboard() {
     else cat "$input_file"; fi
 }
 
-copy_to_clipboard "$RESULT_FILE"
 IFS='|' read -r _ COUNT HUMAN_SIZE TOKENS < <(grep "^STATS|" "${TMP_DIR}/stats")
 printf "\r\033[K" >&2
-echo -e "\033[1;32m✔\033[0;32m Copied: \033[1m${COUNT}\033[0;32m files | Size: \033[1m${HUMAN_SIZE}\033[0;32m | Tokens: \033[1m~${TOKENS}\033[0m"
+if [[ -n "${OUTPUT_FILE:-}" ]]; then
+    cp "$RESULT_FILE" "$OUTPUT_FILE"
+    echo -e "\033[1;32m✔\033[0;32m Saved to \033[1m${OUTPUT_FILE}\033[0;32m: \033[1m${COUNT}\033[0;32m files | Size: \033[1m${HUMAN_SIZE}\033[0;32m | Tokens: \033[1m~${TOKENS}\033[0m"
+else
+    copy_to_clipboard "$RESULT_FILE"
+    echo -e "\033[1;32m✔\033[0;32m Copied: \033[1m${COUNT}\033[0;32m files | Size: \033[1m${HUMAN_SIZE}\033[0;32m | Tokens: \033[1m~${TOKENS}\033[0m"
+fi
 
 EOF
 

@@ -36,7 +36,10 @@ param(
     [string[]]$Arguments = @(),
 
     [Alias("h")]
-    [switch]$Help
+    [switch]$Help,
+
+    [Alias("o")]
+    [string]$OutputFile
 )
 
 # ==============================================================================
@@ -120,8 +123,33 @@ $ArgsList = @($Arguments)
 
 if ($Help -or ($ArgsList -contains "--help") -or ($ArgsList -contains "-h")) {
     Write-Host "GIT-COPY | v$ScriptVersion" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "USAGE:"
+    Write-Host "    git copy [OPTIONS] [FILTERS] [EXCLUDES]"
+    Write-Host ""
+    Write-Host "OPTIONS:"
+    Write-Host "    --help, -h          Show this help message"
+    Write-Host "    --output, -o <file> Save output to file instead of clipboard"
+    Write-Host ""
+    Write-Host "EXAMPLES:"
+    Write-Host "    git copy -o gitcopy.md     Save output to gitcopy.md"
+    Write-Host "    git copy --output out.txt  Save output to out.txt"
     exit 0
 }
+
+# Check for -o/--output in Arguments
+for ($i = 0; $i -lt $ArgsList.Count; $i++) {
+    $arg = $ArgsList[$i]
+    if ($arg -eq "--output" -or $arg -eq "-o") {
+        if ($i + 1 -lt $ArgsList.Count) {
+            $OutputFile = $ArgsList[$i+1]
+            $ArgsList[$i] = $null
+            $ArgsList[$i+1] = $null
+        }
+    }
+}
+# Remove null entries from Arguments
+$ArgsList = $ArgsList | Where-Object { $null -ne $_ }
 
 Write-Host "Processing..." -ForegroundColor Cyan
 
@@ -317,22 +345,40 @@ foreach ($Path in $StructureList) { [void]$OutputBuilder.AppendLine($Path) }
 [void]$OutputBuilder.AppendLine($FENCE)
 
 $FinalOutput = $OutputBuilder.ToString()
-try {
-    Set-Clipboard -Value $FinalOutput
-} catch {
-    Write-Error "Failed to set clipboard: $_"
-    exit 1
-}
 
 $Tokens = [math]::Truncate($TotalBytes / 4)
 if ($TotalBytes -lt 1KB) { $SizeStr = "{0} B" -f $TotalBytes }
 elseif ($TotalBytes -lt 1MB) { $SizeStr = "{0:N2} KB" -f ($TotalBytes / 1KB) }
 else { $SizeStr = "{0:N2} MB" -f ($TotalBytes / 1MB) }
 
-Write-Host "[OK]" -NoNewline -ForegroundColor Green
-Write-Host " Copied: " -NoNewline -ForegroundColor Green
-Write-Host "$FileCount" -NoNewline -ForegroundColor White
-Write-Host " files | Size: " -NoNewline -ForegroundColor Green
-Write-Host "$SizeStr" -NoNewline -ForegroundColor White
-Write-Host " | Tokens: " -NoNewline -ForegroundColor Green
-Write-Host "~$Tokens" -ForegroundColor White
+if ($OutputFile) {
+    try {
+        [System.IO.File]::WriteAllText($OutputFile, $FinalOutput, [System.Text.Encoding]::UTF8)
+        Write-Host "[OK]" -NoNewline -ForegroundColor Green
+        Write-Host " Saved to " -NoNewline -ForegroundColor Green
+        Write-Host "$OutputFile" -NoNewline -ForegroundColor White
+        Write-Host ": " -NoNewline -ForegroundColor Green
+        Write-Host "$FileCount" -NoNewline -ForegroundColor White
+        Write-Host " files | Size: " -NoNewline -ForegroundColor Green
+        Write-Host "$SizeStr" -NoNewline -ForegroundColor White
+        Write-Host " | Tokens: " -NoNewline -ForegroundColor Green
+        Write-Host "~$Tokens" -ForegroundColor White
+    } catch {
+        Write-Error "Failed to write to file: $_"
+        exit 1
+    }
+} else {
+    try {
+        Set-Clipboard -Value $FinalOutput
+    } catch {
+        Write-Error "Failed to set clipboard: $_"
+        exit 1
+    }
+    Write-Host "[OK]" -NoNewline -ForegroundColor Green
+    Write-Host " Copied: " -NoNewline -ForegroundColor Green
+    Write-Host "$FileCount" -NoNewline -ForegroundColor White
+    Write-Host " files | Size: " -NoNewline -ForegroundColor Green
+    Write-Host "$SizeStr" -NoNewline -ForegroundColor White
+    Write-Host " | Tokens: " -NoNewline -ForegroundColor Green
+    Write-Host "~$Tokens" -ForegroundColor White
+}
