@@ -25,7 +25,7 @@ jobs:
           for script in install.sh test.sh; do
             echo "Checking $script..."
             bash -n "$script" || exit 1
-            echo "✓ $script syntax OK"
+            echo "[OK] $script syntax OK"
           done
 
       - name: PowerShell Syntax Check
@@ -41,7 +41,7 @@ jobs:
                 Write-Error \"Syntax errors in \$script\"
                 exit 1
               }
-              Write-Host \"✓ \$script syntax OK\"
+              Write-Host \"[OK] \$script syntax OK\"
             }
           "
 
@@ -105,15 +105,15 @@ jobs:
             exit 1
           }
 
-          Write-Host "✓ Integration test passed" -ForegroundColor Green
+          Write-Host "[OK] Integration test passed" -ForegroundColor Green
 
       - name: Create Report
         if: always()
         run: |
-          echo "## 🪟 Windows Test Report" >> $env:GITHUB_STEP_SUMMARY
-          echo "✅ Syntax Validation: Passed" >> $env:GITHUB_STEP_SUMMARY
-          echo "✅ Test Suite: Executed" >> $env:GITHUB_STEP_SUMMARY
-          echo "✅ Integration Tests: Passed" >> $env:GITHUB_STEP_SUMMARY
+          echo "## Win Windows Test Report" >> $env:GITHUB_STEP_SUMMARY
+          echo "[PASS] Syntax Validation: Passed" >> $env:GITHUB_STEP_SUMMARY
+          echo "[PASS] Test Suite: Executed" >> $env:GITHUB_STEP_SUMMARY
+          echo "[PASS] Integration Tests: Passed" >> $env:GITHUB_STEP_SUMMARY
 
   # ------------------------------------------------------------------
   # TEST UNIX (Bash Version - Mac & Linux)
@@ -162,7 +162,7 @@ jobs:
 
           # Verify output
           if [ ! -f "$HOME/mock_clipboard.txt" ]; then
-            echo "❌ FAIL: No output created"
+            echo "[FAIL] FAIL: No output created"
             exit 1
           fi
 
@@ -170,29 +170,29 @@ jobs:
 
           # Assertions
           if ! echo "$OUTPUT" | grep -q "Player.cs"; then
-            echo "❌ FAIL: Player.cs missing"
+            echo "[FAIL] FAIL: Player.cs missing"
             exit 1
           fi
 
           if echo "$OUTPUT" | grep -q "Player.cs.meta"; then
-            echo "❌ FAIL: .meta file not ignored"
+            echo "[FAIL] FAIL: .meta file not ignored"
             exit 1
           fi
 
           if echo "$OUTPUT" | grep -q "SECRET_KEY"; then
-            echo "❌ FAIL: .env file not ignored"
+            echo "[FAIL] FAIL: .env file not ignored"
             exit 1
           fi
 
-          echo "✓ Integration test passed"
+          echo "[OK] Integration test passed"
 
       - name: Create Report
         if: always()
         run: |
-          OS_ICON="🐧"
-          if [[ "${{ matrix.os }}" == "macos-latest" ]]; then OS_ICON="🍎"; fi
+          OS_ICON="Linux"
+          if [[ "${{ matrix.os }}" == "macos-latest" ]]; then OS_ICON="macOS"; fi
 
           echo "## $OS_ICON ${{ matrix.os }} Test Report" >> $GITHUB_STEP_SUMMARY
-          echo "✅ Syntax Validation: Passed" >> $GITHUB_STEP_SUMMARY
-          echo "✅ Test Suite: Executed" >> $GITHUB_STEP_SUMMARY
-          echo "✅ Integration Tests: Passed" >> $GITHUB_STEP_SUMMARY
+          echo "[PASS] Syntax Validation: Passed" >> $GITHUB_STEP_SUMMARY
+          echo "[PASS] Test Suite: Executed" >> $GITHUB_STEP_SUMMARY
+          echo "[PASS] Integration Tests: Passed" >> $GITHUB_STEP_SUMMARY
