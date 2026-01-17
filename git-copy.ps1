@@ -222,12 +222,9 @@ foreach ($FileEntry in $RawFiles) {
     if ([string]::IsNullOrWhiteSpace($FileEntry)) { continue }
 
     # Path Normalization
-    if ($FileEntry -match "^[A-Za-z]:") {
-        if ($FileEntry.StartsWith($RootPath, [System.StringComparison]::OrdinalIgnoreCase)) {
-            $RelPath = $FileEntry.Substring($RootPath.Length).Trim('\', '/')
-        } else {
-            $RelPath = $FileEntry.Trim()
-        }
+    # Check if file entry starts with RootPath (for both Windows and Unix paths)
+    if ($FileEntry.StartsWith($RootPath, [System.StringComparison]::OrdinalIgnoreCase)) {
+        $RelPath = $FileEntry.Substring($RootPath.Length).Trim('\', '/')
     } else {
         $RelPath = $FileEntry.Trim()
     }
