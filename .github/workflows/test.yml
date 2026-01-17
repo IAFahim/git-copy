@@ -119,16 +119,32 @@ jobs:
                           # THE TRAP: In-memory variable
                           $global:MockClipboardRam = $null
 
-                          # THE MOCK: Pipeline-aware aggregation
+                          # THE MOCK: Support both pipeline and -Value parameter
                           function Set-Clipboard {
-                              param([Parameter(ValueFromPipeline)]$InputObject)
+                              param(
+                                  [Parameter(Position=0, ParameterSetName='Direct')]
+                                  [string]$Value,
 
-                              Begin { $InternalBuffer = [System.Collections.Generic.List[string]]::new() }
+                                  [Parameter(ValueFromPipeline=$true, ParameterSetName='Pipeline')]
+                                  [string]$InputObject
+                              )
+
+                              Begin {
+                                  if ($PSCmdlet.ParameterSetName -eq 'Pipeline') {
+                                      $InternalBuffer = [System.Collections.Generic.List[string]]::new()
+                                  }
+                              }
                               Process {
-                                  if ($null -ne $_) { $InternalBuffer.Add($_) }
+                                  if ($PSCmdlet.ParameterSetName -eq 'Pipeline' -and $null -ne $_) {
+                                      $InternalBuffer.Add($_)
+                                  }
                               }
                               End {
-                                  $global:MockClipboardRam = $InternalBuffer -join [Environment]::NewLine
+                                  if ($PSCmdlet.ParameterSetName -eq 'Pipeline') {
+                                      $global:MockClipboardRam = $InternalBuffer -join [Environment]::NewLine
+                                  } elseif ($PSCmdlet.ParameterSetName -eq 'Direct') {
+                                      $global:MockClipboardRam = $Value
+                                  }
                               }
                           }
 
