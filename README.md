@@ -178,8 +178,3 @@ MIT
 ## 👨‍💻 Author
 
 **Md. Ishtiaq Ahamed Fahim**
-
----
-
-**Star this repo if you find it useful!** ⭐
-```
