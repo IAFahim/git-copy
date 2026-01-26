@@ -30,17 +30,10 @@
     Presets: web, backend, dotnet, unity, java, cpp, script, data, config, docs
 #>
 
-[CmdletBinding()]
-param(
-    [Parameter(ValueFromRemainingArguments = $true)]
-    [string[]]$Arguments = @(),
+param()
 
-    [Alias("h")]
-    [switch]$Help,
-
-    [Alias("o")]
-    [string]$OutputFile
-)
+# Capture all arguments manually since we're not using CmdletBinding
+$Arguments = @($args)
 
 # ==============================================================================
 # CONFIGURATION
@@ -121,7 +114,8 @@ $LANG_MAP = @{
 
 $ArgsList = @($Arguments)
 
-if ($Help -or ($ArgsList -contains "--help") -or ($ArgsList -contains "-h")) {
+# Check for -h/--help
+if ($ArgsList -contains "--help" -or $ArgsList -contains "-h") {
     Write-Host "GIT-COPY | v$ScriptVersion" -ForegroundColor Cyan
     Write-Host ""
     Write-Host "USAGE:"
@@ -138,6 +132,7 @@ if ($Help -or ($ArgsList -contains "--help") -or ($ArgsList -contains "-h")) {
 }
 
 # Check for -o/--output in Arguments
+$OutputFile = $null
 for ($i = 0; $i -lt $ArgsList.Count; $i++) {
     $arg = $ArgsList[$i]
     if ($arg -eq "--output" -or $arg -eq "-o") {
@@ -148,8 +143,8 @@ for ($i = 0; $i -lt $ArgsList.Count; $i++) {
         }
     }
 }
-# Remove null entries from Arguments
-$ArgsList = $ArgsList | Where-Object { $null -ne $_ }
+# Remove null entries and help flags from Arguments
+$ArgsList = @($ArgsList | Where-Object { $null -ne $_ -and $_ -ne "--help" -and $_ -ne "-h" })
 
 Write-Host "Processing..." -ForegroundColor Cyan
 
@@ -270,17 +265,11 @@ foreach ($FileEntry in $RawFiles) {
     # 2. User Exclusions
     $IsExcluded = $false
     $PathSegments = $RelPath -split '/'
-    
-    # DEBUG LOGGING (Conditional)
-    if ($ExcludePatterns.Count -gt 0 -and ($RelPath -match "Test" -or $RelPath -match "node_modules")) {
-         Write-Host "DEBUG: Checking '$RelPath' (Segments: $($PathSegments -join ','))" -ForegroundColor Gray
-    }
 
     foreach ($pat in $ExcludePatterns) {
         # 1. Full Path Check
         if ($RelPath -like $pat -or $RelPath -like "$pat/*") {
             $IsExcluded = $true
-            Write-Host "  > EXCLUDED by FullPath match: '$pat'" -ForegroundColor Yellow
             break
         }
 
@@ -289,13 +278,11 @@ foreach ($FileEntry in $RawFiles) {
             # STRICT MATCH
             if ($seg -like $pat) {
                 $IsExcluded = $true
-                Write-Host "  > EXCLUDED by Segment Strict match: '$seg' -like '$pat'" -ForegroundColor Yellow
                 break
             }
             # FUZZY/CONTAINMENT MATCH
             if ($seg -like "*$pat*") {
                  $IsExcluded = $true
-                 Write-Host "  > EXCLUDED by Segment Fuzzy match: '$seg' -like '*$pat*'" -ForegroundColor Yellow
                  break
             }
         }
