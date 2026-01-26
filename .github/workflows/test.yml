@@ -72,7 +72,7 @@ jobs:
           "node_modules stuff" | Set-Content "TestProject/package-lock.json"
 
           # Mock clipboard
-          function Set-Clipboard {
+          function Global:Set-Clipboard {
               param([Parameter(ValueFromPipeline=$true)]$Value)
               $Value | Set-Content "TestProject/clipboard_output.md"
           }
