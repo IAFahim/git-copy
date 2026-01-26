@@ -340,8 +340,9 @@ $FinalOutput = $OutputBuilder.ToString()
 function Set-ClipboardCrossPlatform {
     param([string]$Value)
 
-    $IsLinuxOS = $PSVersionTable.Platform -eq 'Unix'
-    $IsWindowsOS = $PSVersionTable.Platform -eq 'Win32NT' -or $null -eq $PSVersionTable.Platform
+    # Detect OS (PowerShell 5.1 compatible)
+    $IsWindowsOS = [System.Environment]::OSVersion.Platform -eq "Win32NT"
+    $IsLinuxOS = -not $IsWindowsOS
 
     # Check if there's a mocked Set-Clipboard (for testing)
     $MockedClipboard = Get-Command Set-Clipboard -Scope Global -ErrorAction SilentlyContinue
