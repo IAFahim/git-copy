@@ -225,8 +225,11 @@ $RawFiles = @()
 
 if (Test-Path ".git") {
     $GitOut = git ls-files --cached --others --exclude-standard 2>$null
-    if ($null -ne $GitOut) { $RawFiles = @($GitOut) }
-    else { $RawFiles = Get-ChildItem -Recurse -File | Select-Object -ExpandProperty FullName }
+    if ($null -ne $GitOut) {
+        $RawFiles = @($GitOut -split "`n")
+    } else {
+        $RawFiles = Get-ChildItem -Recurse -File | Select-Object -ExpandProperty FullName
+    }
 } else {
     $RawFiles = Get-ChildItem -Recurse -File | Select-Object -ExpandProperty FullName
 }
